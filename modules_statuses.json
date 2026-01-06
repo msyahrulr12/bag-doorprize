@@ -1,4 +1,6 @@
 {
     "Auth": true,
-    "UserManagement": true
+    "UserManagement": true,
+    "LogManagement": true,
+    "ProductManagement": true
 }

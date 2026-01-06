@@ -23,4 +23,12 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
-Modules/
+
+# Exclude all Modules
+/Modules/*
+!/Modules/Log
+!/Modules/UserManagement
+
+**/caddy
+frankenphp
+frankenphp-worker.php

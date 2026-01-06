@@ -135,6 +135,12 @@ return [
         ],
     ],
 
+    'additional_policies' => [
+        'path' => base_path('Modules/LogManagement/Policies'),
+        'merge' => true,
+        'generate' => true,
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Localization
@@ -242,9 +248,9 @@ return [
     */
 
     'discovery' => [
-        'discover_all_resources' => false,
-        'discover_all_widgets' => false,
-        'discover_all_pages' => false,
+        'discover_all_resources' => true,
+        'discover_all_widgets' => true,
+        'discover_all_pages' => true,
     ],
 
     /*

@@ -29,7 +29,12 @@ class AdminPanelProvider extends PanelProvider
 
         $panel
             ->default()
-            ->id('admin');
+            ->id('admin')
+            ->path('admin')
+            ->login()
+            ->colors([
+                'primary' => Color::Amber,
+            ]);
 
         foreach ($enabledModules as $module) {
             $moduleName = $module->getName();
@@ -48,21 +53,16 @@ class AdminPanelProvider extends PanelProvider
             );
         }
 
-            return $panel
-            ->path('admin')
-            ->login()
-            ->colors([
-                'primary' => Color::Amber,
-            ])
-            ->discoverResources(
-                in: app_path('Filament/Resources'),
-                for: 'App\Filament\Resources'
-            )
+        return $panel
+            // ->discoverResources(
+            //     in: app_path('Filament/Resources'),
+            //     for: 'App\Filament\Resources'
+            // )
             // ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
                 Dashboard::class,
             ])
-            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
+            // ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->widgets([
                 AccountWidget::class,
                 FilamentInfoWidget::class,

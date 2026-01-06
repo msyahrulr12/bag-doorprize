@@ -1,3 +1,9 @@
 [submodule "Modules/UserManagement"]
 	path = Modules/UserManagement
 	url = git@github.com:msyahrulr12/bovel-user-management.git
+[submodule "Modules/ProductManagement"]
+	path = Modules/ProductManagement
+	url = git@github.com:msyahrulr12/bovel-product-management.git
+[submodule "Modules/LogManagement"]
+	path = Modules/LogManagement
+	url = git@github.com:msyahrulr12/bovel-log.git
