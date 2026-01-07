@@ -3,9 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use OwenIt\Auditing\Contracts\Auditable;
 
-class Winner extends Model
+class Winner extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable, SoftDeletes;
+
     protected $fillable = [
         // Participant Details
         'participant_id',
