@@ -1,9 +1,8 @@
 <?php
 
-namespace App\Filament\Resources\Prizes\Tables;
+namespace App\Filament\Resources\Branches\Tables;
 
-use App\Filament\Exports\PrizeExporter;
-use App\Models\Prize;
+use App\Filament\Exports\BranchExporter;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -14,24 +13,18 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 
-class PrizesTable
+class BranchesTable
 {
     public static function configure(Table $table): Table
     {
         return $table
             ->columns([
-                TextColumn::make('prize_code')
+                TextColumn::make('branch_code')
                     ->searchable(),
-                TextColumn::make('prize_name')
+                TextColumn::make('branch_name')
                     ->searchable(),
-                TextColumn::make('tier')
-                    ->searchable()
-                    ->state(function ($record): string {
-                        return Prize::PRIZE_TIER[$record['tier']] ?? 'Common';
-                    }),
-                TextColumn::make('value')
-                    ->numeric()
-                    ->sortable(),
+                TextColumn::make('address')
+                    ->searchable(),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -59,7 +52,7 @@ class PrizesTable
                 ]),
             ])
             ->headerActions([
-                ExportAction::make()->exporter(PrizeExporter::class)
+                ExportAction::make()->exporter(BranchExporter::class)
             ]);
     }
 }
