@@ -20,5 +20,26 @@ class Customer extends Model implements Auditable
         'description',
         'total_point_sum',
         'redeemed_points',
+        'status',
     ];
+
+    public const STATUS = [
+        'active' => 'Active',
+        'inactive' => 'Inactive',
+    ];
+
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
+    public function accounts()
+    {
+        return $this->hasMany(Account::class);
+    }
+
+    public function documents()
+    {
+        return $this->hasMany(AccountDocument::class);
+    }
 }

@@ -1,0 +1,99 @@
+<?php
+
+namespace App\Filament\Resources\Events\Widgets;
+
+use App\Models\DrawSession;
+use Filament\Actions\CreateAction;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\EditAction;
+use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Table;
+use Filament\Widgets\TableWidget;
+use Illuminate\Database\Eloquent\Model;
+
+class DrawSessionTable extends TableWidget
+{
+    public ?Model $record = null;
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(
+                DrawSession::query()->where('event_id', $this->record->id)->orderBy('started_at', 'asc')
+            )
+            ->columns([
+                TextColumn::make('name')
+                    ->searchable()
+                    ->sortable(),
+                TextColumn::make('status')
+                    ->badge()
+                    ->color(fn(string $state): string => match ($state) {
+                        'ACTIVE' => 'success',
+                        'NONACTIVE' => 'danger',
+                        default => 'gray',
+                    })
+                    ->searchable(),
+                TextColumn::make('started_at')
+                    ->dateTime()
+                    ->sortable(),
+                TextColumn::make('ended_at')
+                    ->dateTime()
+                    ->sortable(),
+                TextColumn::make('total_lottery_generated')
+                    ->label('Total Winners')
+                    ->numeric()
+                    ->sortable(),
+                TextColumn::make('created_at')
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+            ])
+            ->headerActions([
+                CreateAction::make()
+                    ->form([
+                        Hidden::make('event_id')
+                            ->default(fn() => $this->record->id),
+                        TextInput::make('name')
+                            ->required()
+                            ->maxLength(255),
+                        Select::make('status')
+                            ->options([
+                                'ACTIVE' => 'Active',
+                                'NONACTIVE' => 'Nonactive',
+                            ])
+                            ->default('ACTIVE')
+                            ->required(),
+                        DateTimePicker::make('started_at')
+                            ->default(now()),
+                        DateTimePicker::make('ended_at'),
+                        Textarea::make('description')
+                            ->columnSpanFull(),
+                    ]),
+            ])
+            ->recordActions([
+                EditAction::make()
+                    ->form([
+                        TextInput::make('name')
+                            ->required()
+                            ->maxLength(255),
+                        Select::make('status')
+                            ->options([
+                                'ACTIVE' => 'Active',
+                                'NONACTIVE' => 'Nonactive',
+                            ])
+                            ->required(),
+                        DateTimePicker::make('started_at'),
+                        DateTimePicker::make('ended_at'),
+                        Textarea::make('description')
+                            ->columnSpanFull(),
+                    ]),
+                DeleteAction::make(),
+            ])
+            ->defaultSort('created_at', 'desc');
+    }
+}

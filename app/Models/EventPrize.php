@@ -13,8 +13,19 @@ class EventPrize extends Model implements Auditable
     protected $fillable = [
         'event_id',
         'prize_id',
+        'uuid',
         'total_quantity',
         'remaining_quantity',
         'min_points_required',
     ];
+
+    public function event()
+    {
+        return $this->belongsTo(Event::class);
+    }
+
+    public function prize()
+    {
+        return $this->belongsTo(Prize::class);
+    }
 }

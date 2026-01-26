@@ -21,5 +21,26 @@ class Participant extends Model implements Auditable
         'total_points_snapshot',
         'range_start',
         'range_end',
+        'status',
     ];
+
+    public function event()
+    {
+        return $this->belongsTo(Event::class);
+    }
+
+    public function account()
+    {
+        return $this->belongsTo(Account::class);
+    }
+
+    public function lotteryTickets()
+    {
+        return $this->hasMany(LotteryTicket::class);
+    }
+
+    public function winners()
+    {
+        return $this->hasMany(Winner::class);
+    }
 }

@@ -3,12 +3,14 @@
 namespace App\Filament\Resources\Events\Tables;
 
 use App\Filament\Exports\EventExporter;
+use App\Filament\Imports\EventImporter;
 use App\Models\Event;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ExportAction;
 use Filament\Actions\ForceDeleteBulkAction;
+use Filament\Actions\ImportAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
@@ -27,7 +29,7 @@ class EventsTable
                     ->searchable(),
                 TextColumn::make('status')
                     ->searchable()
-                    ->state(function($record): string {
+                    ->state(function ($record): string {
                         return Event::EVENT_STATUS[$record['status']] ?? 'N/A';
                     }),
                 TextColumn::make('event_started_at')
@@ -65,6 +67,7 @@ class EventsTable
             ])
             ->headerActions([
                 ExportAction::make()->exporter(EventExporter::class),
+                ImportAction::make()->importer(EventImporter::class),
             ]);
     }
 }

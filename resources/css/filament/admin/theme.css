@@ -1,0 +1,38 @@
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+@source '../../../../app/Filament/**/*';
+@source '../../../../resources/views/filament/**/*';
+
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.fi-topbar {
+    background-color: #EFFCFC;
+    /* Remove any default shadow or ring if necessary */
+    box-shadow: none;
+    --tw-ring-color: none;
+}
+
+.fi-sidebar {
+    background-color: #EFFCFC;
+    box-shadow: none;
+    --tw-ring-color: none;
+}
+
+/* Adjust text color for better contrast on a dark background */
+.fi-topbar .fi-topbar-item-label,
+.fi-sidebar .fi-sidebar-item-label,
+.fi-sidebar .fi-sidebar-header .fi-brand-name {
+    color: theme('colors.black');
+}
+
+/* Adjust active/hover states as needed */
+/* .fi-sidebar .fi-sidebar-item.fi-active {
+    background-color: theme('colors.blue.900');
+} */
+
+/* .fi-sidebar .fi-sidebar-item:hover {
+    background-color: theme('colors.blue.700');
+} */

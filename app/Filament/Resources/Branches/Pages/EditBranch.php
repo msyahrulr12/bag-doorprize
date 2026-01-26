@@ -15,7 +15,7 @@ class EditBranch extends EditRecord
     {
         return [
             DeleteAction::make(),
-            RestoreAction::make(),
+            RestoreAction::make()
         ];
     }
 

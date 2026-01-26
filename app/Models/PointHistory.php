@@ -20,11 +20,15 @@ class PointHistory extends Model implements Auditable
         'description',
     ];
 
+    public const POINT_TYPE_EARN = 'EARN';
+    public const POINT_TYPE_REDEEM = 'REDEEM';
+    public const POINT_TYPE_EXPIRED = 'EXPIRED';
+    public const POINT_TYPE_ADJUSTMENT = 'ADJUSTMENT';
     public const POINT_HISTORY_TYPE = [
-        'EARN',
-        'REDEEM',
-        'EXPIRED',
-        'ADJUSTMENT'
+        self::POINT_TYPE_EARN,
+        self::POINT_TYPE_REDEEM,
+        self::POINT_TYPE_EXPIRED,
+        self::POINT_TYPE_ADJUSTMENT
     ];
 
     public function account()

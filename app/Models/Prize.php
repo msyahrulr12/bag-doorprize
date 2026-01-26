@@ -17,13 +17,25 @@ class Prize extends Model implements Auditable
         'tier',
         'value',
         'description',
+        'status',
     ];
 
+    public const TIER_GRAND_PRIZE = 'GRAND PRIZE';
+    public const TIER_1 = 'TIER 1';
+    public const TIER_2 = 'TIER 2';
+    public const TIER_3 = 'TIER 3';
+    public const TIER_COMMON = 'COMMON';
+
     public const PRIZE_TIER = [
-        'Grand Prize',
-        'Tier 1',
-        'Tier 2',
-        'Tier 3',
-        'Common',
+        self::TIER_GRAND_PRIZE => self::TIER_GRAND_PRIZE,
+        self::TIER_1 => self::TIER_1,
+        self::TIER_2 => self::TIER_2,
+        self::TIER_3 => self::TIER_3,
+        self::TIER_COMMON => self::TIER_COMMON,
     ];
+
+    public function events()
+    {
+        return $this->belongsToMany(Event::class);
+    }
 }

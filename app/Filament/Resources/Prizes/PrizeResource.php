@@ -19,9 +19,9 @@ class PrizeResource extends Resource
 {
     protected static ?string $model = Prize::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::Gift;
 
-    protected static string | UnitEnum | null $navigationGroup = 'Master Menu';
+    protected static string|UnitEnum|null $navigationGroup = 'Event & Prize';
 
     protected static ?string $recordTitleAttribute = 'prize_name';
 

@@ -57,4 +57,58 @@ class Winner extends Model implements Auditable
         'EXPIRED',
         'CANCELLED'
     ];
+
+    public function participant()
+    {
+        return $this->belongsTo(Participant::class);
+    }
+
+    public function eventPrize()
+    {
+        return $this->belongsTo(EventPrize::class);
+    }
+
+    public function drawSession()
+    {
+        return $this->belongsTo(DrawSession::class);
+    }
+
+    public function lotteryTicket()
+    {
+        return $this->belongsTo(LotteryTicket::class);
+    }
+
+    public function getDataBulk()
+    {
+        return [
+            'cif' => $this->participant_cif,
+            'name' => $this->participant_name,
+            'account' => [
+                'account_number' => $this->participant_account_number,
+                'branch' => [
+                    'region' => $this->participant_region
+                ],
+            ],
+            'ticket' => [
+                'id' => $this->lottery_ticket_id,
+                'total_points' => $this->total_points,
+                'range_start' => $this->range_start,
+                'range_end' => $this->range_end,
+            ],
+            'participant' => [
+                'id' => $this->participant_id,
+                'participant_name' => $this->participant_name,
+                'participant_cif' => $this->participant_cif, // Actually customer cif
+                'participant_email' => $this->participant_email,
+            ],
+            'customer' => [
+                'id' => $this->customer_id,
+            ],
+            'lucky_number' => $this->winning_number,
+            'winning_number' => $this->range_start === $this->range_end
+                ? $this->range_start
+                : "{$this->range_start} - {$this->range_end}",
+            'region' => $this->region
+        ];
+    }
 }

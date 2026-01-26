@@ -19,4 +19,14 @@ class DrawSession extends Model implements Auditable
         'status',
         'description',
     ];
+
+    public const DRAW_SESSION_STATUS = [
+        'ACTIVE',
+        'NONACTIVE'
+    ];
+
+    public function event()
+    {
+        return $this->belongsTo(Event::class);
+    }
 }

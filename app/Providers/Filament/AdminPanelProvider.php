@@ -31,6 +31,7 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
+            ->viteTheme('resources/css/filament/admin/theme.css')
             ->login()
             ->colors([
                 'primary' => Color::Amber,
@@ -43,14 +44,14 @@ class AdminPanelProvider extends PanelProvider
                 in: $module->getPath() . '/app/Filament/Resources',
                 for: "Modules\\{$moduleName}\\Filament\\Resources"
             )
-            ->discoverPages(
-                in: $module->getPath() . '/app/Filament/Pages',
-                for: "Modules\\{$moduleName}\\Filament\\Pages"
-            )
-            ->discoverWidgets(
-                in: $module->getPath() . '/app/Filament/Widgets',
-                for: "Modules\\{$moduleName}\\Filament\\Widgets"
-            );
+                ->discoverPages(
+                    in: $module->getPath() . '/app/Filament/Pages',
+                    for: "Modules\\{$moduleName}\\Filament\\Pages"
+                )
+                ->discoverWidgets(
+                    in: $module->getPath() . '/app/Filament/Widgets',
+                    for: "Modules\\{$moduleName}\\Filament\\Widgets"
+                );
         }
 
         return $panel
@@ -65,7 +66,7 @@ class AdminPanelProvider extends PanelProvider
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->widgets([
                 AccountWidget::class,
-                FilamentInfoWidget::class,
+                FilamentInfoWidget::class
             ])
             ->middleware([
                 EncryptCookies::class,

@@ -3,11 +3,13 @@
 namespace App\Filament\Resources\Prizes\Tables;
 
 use App\Filament\Exports\PrizeExporter;
+use App\Filament\Imports\EventImporter;
 use App\Models\Prize;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ExportAction;
+use Filament\Actions\ImportAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
@@ -59,7 +61,8 @@ class PrizesTable
                 ]),
             ])
             ->headerActions([
-                ExportAction::make()->exporter(PrizeExporter::class)
+                ExportAction::make()->exporter(PrizeExporter::class),
+                ImportAction::make()->importer(EventImporter::class),
             ]);
     }
 }
