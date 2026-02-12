@@ -1,7 +1,18 @@
+# Application Configuration
 APP_NAME=bag-doorprize
 PACKAGE_NAME=$(APP_NAME)-deploy.tar.gz
 
-.PHONY: help build package clean setup install deploy
+# Octane Configuration (can be overridden via environment variables)
+OCTANE_SERVER?=frankenphp
+OCTANE_HOST?=0.0.0.0
+OCTANE_PORT?=8000
+OCTANE_WORKERS?=4
+
+# Queue Configuration
+QUEUE_CONNECTION?=database
+QUEUE_NAMES?=tickets,imports,draws
+
+.PHONY: help build package clean setup install deploy octane queue super-admin
 
 help:
 	@echo "Offline Deployment Tool"
@@ -12,6 +23,23 @@ help:
 	@echo "Usage (Server Deployment):"
 	@echo "  make deploy        - Setup the application on the target server (requires .env)"
 	@echo "  make cron          - Setup crontab to run Laravel scheduler every minute"
+	@echo ""
+	@echo "Usage (Application Management):"
+	@echo "  make octane        - Start Laravel Octane server"
+	@echo "  make queue         - Start queue worker"
+	@echo "  make super-admin   - Create a super admin user"
+	@echo "  make optimize      - Optimize Laravel caches"
+	@echo "  make clear-cache   - Clear all Laravel caches"
+	@echo ""
+	@echo "Configuration (override with environment variables):"
+	@echo "  OCTANE_SERVER      - Octane server type (default: frankenphp)"
+	@echo "  OCTANE_HOST        - Octane host (default: 0.0.0.0)"
+	@echo "  OCTANE_PORT        - Octane port (default: 8000)"
+	@echo "  OCTANE_WORKERS     - Number of workers (default: 4)"
+	@echo "  QUEUE_NAMES        - Queue names (default: tickets,imports,draws)"
+	@echo ""
+	@echo "Example:"
+	@echo "  OCTANE_PORT=8080 OCTANE_WORKERS=8 make octane"
 
 # --- LOCAL PREPARATION ---
 
@@ -56,8 +84,10 @@ deploy:
 	mkdir -p storage/framework/sessions
 	mkdir -p storage/framework/views
 	mkdir -p storage/app/public
+	mkdir -p storage/logs
 	@echo ">>> Setting permissions..."
 	chmod +x frankenphp
+	chmod -R 775 storage bootstrap/cache
 	@echo ">>> Optimizing Laravel..."
 	php artisan key:generate --force --no-interaction
 	php artisan config:cache
@@ -70,9 +100,38 @@ deploy:
 	php artisan storage:link
 	@echo ">>> Deployment complete! App is ready."
 
+# --- APPLICATION MANAGEMENT ---
+
 octane:
-	@echo ">>> Starting Laravel Octane with FrankenPHP..."
-	php artisan octane:start --server=frankenphp --host=0.0.0.0 --port=8000 --workers=4
+	@echo ">>> Starting Laravel Octane with $(OCTANE_SERVER)..."
+	@echo ">>> Host: $(OCTANE_HOST) | Port: $(OCTANE_PORT) | Workers: $(OCTANE_WORKERS)"
+	php artisan octane:start --server=$(OCTANE_SERVER) --host=$(OCTANE_HOST) --port=$(OCTANE_PORT) --workers=$(OCTANE_WORKERS)
+
+queue:
+	@echo ">>> Starting queue worker..."
+	@echo ">>> Connection: $(QUEUE_CONNECTION) | Queues: $(QUEUE_NAMES)"
+	php artisan queue:work --queue=$(QUEUE_NAMES) --tries=3 --timeout=300
+
+super-admin:
+	@echo ">>> Creating super admin user..."
+	php artisan shield:super-admin
+
+optimize:
+	@echo ">>> Optimizing Laravel..."
+	php artisan config:cache
+	php artisan route:cache
+	php artisan view:cache
+	php artisan event:cache
+	@echo ">>> Optimization complete."
+
+clear-cache:
+	@echo ">>> Clearing all caches..."
+	php artisan config:clear
+	php artisan route:clear
+	php artisan view:clear
+	php artisan event:clear
+	php artisan cache:clear
+	@echo ">>> Cache cleared."
 
 cron:
 	@echo ">>> Setting up crontab for Laravel scheduler..."

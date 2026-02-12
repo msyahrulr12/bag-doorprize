@@ -55,6 +55,84 @@ make octane
 
 The server will start on port `8000` by default (as defined in the Makefile).
 
+## 4. Setup User Management & Permissions
+
+### Create Super Admin User
+
+Create a super admin user using this command:
+
+```bash
+php artisan shield:super-admin
+```
+
+This will prompt you for:
+
+- Name
+- Email
+- Password
+
+The command will create a user with the `super_admin` role and all permissions.
+
+### Install Shield Filament Generator (Optional - For Development)
+
+If you need to regenerate Shield resources or customize permissions, install the Shield generator:
+
+1. **Install the package** (requires internet):
+
+    ```bash
+    composer require bezhansalleh/filament-shield --dev
+    ```
+
+2. **Publish Shield resources**:
+
+    ```bash
+    php artisan vendor:publish --tag="filament-shield-config"
+    ```
+
+3. **Generate Shield resources** (roles, permissions UI):
+
+    ```bash
+    php artisan shield:install
+    ```
+
+    This will:
+    - Create migrations for roles and permissions
+    - Generate Shield resources (RoleResource, etc.)
+    - Set up permission policies
+
+4. **Generate permissions for existing resources**:
+
+    ```bash
+    php artisan shield:generate --all
+    ```
+
+    This scans all Filament resources and creates permissions for them.
+
+5. **Create custom roles** (if needed):
+    ```bash
+    php artisan shield:create-role
+    ```
+
+### Shield Commands Reference
+
+| Command                                                   | Description                                |
+| --------------------------------------------------------- | ------------------------------------------ |
+| `php artisan shield:super-admin`                          | Create a super admin user                  |
+| `php artisan shield:install`                              | Install Shield resources                   |
+| `php artisan shield:generate --all`                       | Generate permissions for all resources     |
+| `php artisan shield:generate --resource=CustomerResource` | Generate permissions for specific resource |
+| `php artisan shield:create-role`                          | Create a new role interactively            |
+| `php artisan shield:publish`                              | Publish Shield views and config            |
+
+### Managing Permissions
+
+After installation, you can manage roles and permissions through the Filament admin panel:
+
+1. Navigate to `/admin/shield/roles`
+2. Create/edit roles
+3. Assign permissions to roles
+4. Assign roles to users
+
 ## Notes
 
 - **PHP & Web Server**: Ensure the server already has PHP 8.2+, a database (PostgreSQL/MySQL), and required extensions. FrankenPHP handles web requests directly, so a separate Nginx/Apache is optional.

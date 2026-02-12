@@ -3,10 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
-class AccountDocument extends Model
+class AccountDocument extends Model implements Auditable
 {
-    use \Illuminate\Database\Eloquent\SoftDeletes;
+    use \Illuminate\Database\Eloquent\SoftDeletes, \OwenIt\Auditing\Auditable;
 
     protected $fillable = [
         'customer_id',

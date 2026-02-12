@@ -49,7 +49,8 @@ class ViewCustomer extends ViewRecord
                                 Livewire::make(PdfBankStatement::class, [
                                     'customer' => $this->getRecord()
                                 ])
-                            ]),
+                            ])
+                            ->hidden(),
                         Tab::make('Document')
                             ->schema([
                                 Livewire::make(DocumentTable::class, [
