@@ -10,6 +10,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditProduct extends EditRecord
 {
+    use \App\Traits\InteractsWithApprovals;
+
     protected static string $resource = ProductResource::class;
 
     protected function getHeaderActions(): array

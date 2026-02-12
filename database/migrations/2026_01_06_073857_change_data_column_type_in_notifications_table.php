@@ -5,16 +5,15 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 
-return new class extends Migration
-{
+return new class extends Migration {
     /**
      * Run the migrations.
      */
     public function up(): void
     {
-        Schema::table('notifications', function (Blueprint $table) {
+        if (DB::getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE notifications ALTER COLUMN "data" TYPE jsonb USING "data"::jsonb');
-        });
+        }
     }
 
     /**
@@ -22,8 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('notifications', function (Blueprint $table) {
+        if (DB::getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE notifications ALTER COLUMN "data" TYPE text USING "data"::text');
-        });
+        }
     }
 };

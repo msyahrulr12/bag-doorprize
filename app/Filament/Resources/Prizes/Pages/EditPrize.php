@@ -8,6 +8,7 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditPrize extends EditRecord
 {
+    use \App\Traits\InteractsWithApprovals;
     protected static string $resource = PrizeResource::class;
 
     protected function getHeaderActions(): array

@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\Events\Widgets;
 
+use App\Models\Event;
 use App\Models\Participant;
 use App\Models\Account;
+use Carbon\Carbon;
 use Filament\Actions\CreateAction;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
@@ -13,25 +15,63 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Support\Enums\FontWeight;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
+use Filament\Actions\ExportAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class ParticipantTable extends TableWidget
 {
     public ?Model $record = null;
+    public array $account_ids = [];
 
     public function table(Table $table): Table
     {
         return $table
-            ->query(
-                Participant::query()
-                    ->with(['lotteryTickets', 'account.customer'])
-                    ->where('event_id', $this->record->id)
-            )
+            ->deferLoading()
+            ->query(function () {
+                if ($this->record->status == Event::STATUS_ACTIVE) {
+                    // For active events, use direct event_id filter
+                    $query = Participant::query()
+                        ->select('participants.*')
+                        ->with(['account.customer'])
+                        ->withCount('lotteryTickets');
+
+                    if ($this->record) {
+                        $query->where('event_id', $this->record->id);
+                    }
+                } else {
+                    // For inactive events, use the pivot table
+                    $query = Participant::query()
+                        ->select('participants.*')
+                        ->with(['account.customer'])
+                        ->withCount('lotteryTickets')
+                        ->whereIn('id', function ($subQuery) {
+                        $subQuery->select('participant_id')
+                            ->from('event_participant')
+                            ->where('event_id', $this->record->id);
+                    });
+                }
+
+                if (!empty($this->account_ids)) {
+                    $query->whereIn('account_id', $this->account_ids);
+                }
+
+                // Filter by user branches
+                if (!auth()->user()->hasRole('super_admin')) {
+                    $query->whereHas('account', function ($q) {
+                        $q->whereIn('branch_id', auth()->user()->branches->pluck('id'));
+                    });
+                }
+
+                return $query;
+            })
+            ->defaultPaginationPageOption(25)
+            ->paginationPageOptions([10, 25, 50, 100])
+            ->defaultSort('created_at', 'desc')
             ->columns([
                 TextColumn::make('event_id')
                     ->numeric()
@@ -39,11 +79,11 @@ class ParticipantTable extends TableWidget
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('account.customer.name')
                     ->label('Customer Name')
-                    ->searchable()
+                    ->searchable(['customers.name'])
                     ->sortable(),
                 TextColumn::make('account.account_number')
                     ->label('Account Number')
-                    ->searchable()
+                    ->searchable(['accounts.account_number'])
                     ->sortable(),
                 TextColumn::make('participant_name')
                     ->label('Participant Name (Snapshot)')
@@ -61,12 +101,26 @@ class ParticipantTable extends TableWidget
                 TextColumn::make('participant_phone_number')
                     ->searchable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('total_points_snapshot')
-                    ->state(fn(Participant $record) => $record->lotteryTickets()->where('status', 'ACTIVE')->sum('total_points'))
+                TextColumn::make('active_points')
+                    ->label('Total Points')
+                    ->getStateUsing(function (Participant $record) {
+                        // Use a cached query to avoid N+1
+                        return DB::table('lottery_tickets')
+                            ->where('participant_id', $record->id)
+                            ->where('status', 'ACTIVE')
+                            ->sum('total_points');
+                    })
                     ->numeric()
-                    ->sortable(),
+                    ->sortable(query: function (Builder $query, string $direction): Builder {
+                        return $query
+                            ->leftJoin('lottery_tickets', function ($join) {
+                                $join->on('participants.id', '=', 'lottery_tickets.participant_id')
+                                    ->where('lottery_tickets.status', '=', 'ACTIVE');
+                            })
+                            ->groupBy('participants.id')
+                            ->orderBy(DB::raw('SUM(COALESCE(lottery_tickets.total_points, 0))'), $direction);
+                    }),
                 TextColumn::make('lottery_tickets_count')
-                    ->counts('lotteryTickets')
                     ->label('Tickets')
                     ->badge()
                     ->color(fn(int $state): string => $state > 0 ? 'success' : 'gray')
@@ -88,19 +142,44 @@ class ParticipantTable extends TableWidget
                 //
             ])
             ->headerActions([
+                ExportAction::make()
+                    ->exporter(\App\Filament\Exports\ParticipantExporter::class)
+                    ->label('Export CSV/Excel'),
+                Action::make('export_pdf')
+                    ->label('Export PDF')
+                    ->color('danger')
+                    ->icon('heroicon-o-document-text')
+                    ->action(function () {
+                        $query = Participant::query()
+                            ->with(['account.customer']);
+                        if ($this->record) {
+                            $query->where('event_id', $this->record->id);
+                        }
+                        if (!empty($this->account_ids)) {
+                            $query->whereIn('account_id', $this->account_ids);
+                        }
+                        $records = $query->get();
+                        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.participants', ['records' => $records]);
+                        return response()->streamDownload(fn() => print ($pdf->output()), 'participants.pdf');
+                    }),
                 CreateAction::make()
                     ->form([
                         Hidden::make('event_id')
-                            ->default(fn() => $this->record->id),
+                            ->default(fn() => $this->record?->id),
                         Select::make('account_id')
                             ->label('Account')
                             ->searchable()
                             ->getSearchResultsUsing(function (string $search) {
                                 return Account::with('customer')
-                                    ->whereHas('customer', function ($q) use ($search) {
-                                        $q->where('name', 'like', "%{$search}%");
+                                    ->when(!auth()->user()->hasRole('super_admin'), function ($query) {
+                                        $query->whereIn('branch_id', auth()->user()->branches->pluck('id'));
                                     })
-                                    ->orWhere('account_number', 'like', "%{$search}%")
+                                    ->where(function ($q) use ($search) {
+                                        $q->whereHas('customer', function ($sub) use ($search) {
+                                            $sub->where('name', 'ilike', "%{$search}%");
+                                        })
+                                            ->orWhere('account_number', 'ilike', "%{$search}%");
+                                    })
                                     ->limit(50)
                                     ->get()
                                     ->mapWithKeys(fn($account) => [$account->id => $account->customer->name . ' - ' . $account->account_number]);

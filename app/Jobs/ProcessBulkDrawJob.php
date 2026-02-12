@@ -59,11 +59,16 @@ class ProcessBulkDrawJob implements ShouldQueue
                     'lottery_tickets.range_start',
                     'lottery_tickets.range_end',
                     'lottery_tickets.participant_id',
-                    'customers.id as customer_id',
+                    'accounts.customer_id as customer_id',
                     'customers.cif',
+                    'branches.id as branch_id',
                     'branches.region',
+                    'branches.branch_code',
+                    'branches.branch_name',
+                    'branches.company_book as branch_company_book',
                     'participants.participant_name',
                     'participants.participant_email',
+                    'participants.participant_phone_number',
                     'accounts.account_number',
                     // 'prizes.prize_name',
                     // 'prizes.id as prize_id',
@@ -132,7 +137,11 @@ class ProcessBulkDrawJob implements ShouldQueue
                     'account' => [
                         'account_number' => $selectedTicket->account_number,
                         'branch' => [
-                            'region' => $selectedTicket->region
+                            'id' => $selectedTicket->branch_id,
+                            'code' => $selectedTicket->branch_code,
+                            'region' => $selectedTicket->region,
+                            'branch_name' => $selectedTicket->branch_name,
+                            'company_book' => $selectedTicket->branch_company_book,
                         ],
                     ],
                     'ticket' => [
@@ -146,6 +155,7 @@ class ProcessBulkDrawJob implements ShouldQueue
                         'participant_name' => $selectedTicket->participant_name,
                         'participant_cif' => $selectedTicket->cif, // Actually customer cif
                         'participant_email' => $selectedTicket->participant_email,
+                        'participant_phone_number' => $selectedTicket->participant_phone_number,
                     ],
                     'customer' => [
                         'id' => $selectedTicket->customer_id,
@@ -154,17 +164,26 @@ class ProcessBulkDrawJob implements ShouldQueue
                     'winning_number' => $selectedTicket->range_start === $selectedTicket->range_end
                         ? $selectedTicket->range_start
                         : "{$selectedTicket->range_start} - {$selectedTicket->range_end}",
-                    'region' => $selectedTicket->region
+                    'region' => $selectedTicket->region,
+                    'branch_name' => $selectedTicket->branch_name
                 ];
 
-                if ($i % 50 == 0) {
-                    $batch->update(['processed_winners' => $i + 1]);
+                if ($i % 5 == 0) {
+                    $batch->refresh();
+                    if ($batch->status === 'CANCELLED') {
+                        Log::info("BulkDraw - Job stop signaled for batch: {$this->batchId} - but continuing to 100% as requested.");
+                    }
+                    $batch->update([
+                        'processed_winners' => $i + 1,
+                        'results' => $winners
+                    ]);
                 }
             }
 
+            $finalStatus = $batch->status === 'CANCELLED' ? 'CANCELLED' : 'COMPLETED';
             $batch->update([
-                'status' => 'COMPLETED',
-                'processed_winners' => count($winners),
+                'status' => $finalStatus,
+                'processed_winners' => $drawCount,
                 'results' => $winners,
             ]);
 

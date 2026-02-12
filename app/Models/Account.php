@@ -41,9 +41,9 @@ class Account extends Model
         return $this->belongsTo(Branch::class);
     }
 
-    public function poinHistories()
+    public function pointHistories()
     {
-        return $this->belongsToMany(PointHistory::class);
+        return $this->hasMany(PointHistory::class);
     }
 
     public function product()

@@ -10,9 +10,14 @@ use App\Models\Winner;
 use App\Models\Prize;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
+use Livewire\WithPagination;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\WithoutScrolling;
 
+#[WithoutScrolling]
 class BulkDrawing extends Component
 {
+    use WithPagination;
     public $uuid;
     public $eventPrize;
     public $drawSessionId;
@@ -24,6 +29,19 @@ class BulkDrawing extends Component
     public $processedCount = 0;
     public $totalToProcess = 0;
     public $alreadyConfirmed = false;
+    public ?float $processPercentage = 0;
+    public bool $isStopping = false;
+    public ?int $stopTriggeredAt = null;
+    public ?int $totalWinners = 0;
+    public bool $isPreview = false;
+    public bool $enableRedraw = true;
+    public $newWinners = [];
+
+    #[Computed]
+    public function paginatedWinners()
+    {
+        return Winner::where('event_prize_id', $this->eventPrize->id)->orderBy('id', 'desc')->paginate(30);
+    }
 
     public function mount($uuid)
     {
@@ -32,50 +50,77 @@ class BulkDrawing extends Component
 
         // Auto-select active session if exists
         $this->drawSessionId = DrawSession::where('event_id', $this->eventPrize->event_id)
-            ->where('status', 'ACTIVE')
+            ->where('status', DrawSession::STATUS_ACTIVE)
+            ->where('started_at', '<=', now())
+            ->where('ended_at', '>=', now())
             ->first()?->id;
 
-        $winners = Winner::where('event_prize_id', $this->eventPrize->id)->where('status', 'PENDING')->get();
-        if ($winners->count() > 0) {
-            $this->alreadyConfirmed = true;
-            $this->winners = $winners->map(function ($winner) {
-                return $winner->getDataBulk();
-            });
+        $this->alreadyConfirmed = (bool) Setting::where('key', 'activate_re_draw_and_confirm')->first()->value == false;
+
+        $this->checkWinner();
+    }
+
+    public function updatedPage()
+    {
+        if (!$this->isPreview) {
+            $this->checkWinner();
         }
+    }
+
+    private function checkWinner()
+    {
+        $this->isPreview = false;
+        $paginatedWinners = $this->paginatedWinners;
+
+        if ($paginatedWinners->count() > 0) {
+            $this->totalWinners = $paginatedWinners->total();
+            $this->winners = collect($paginatedWinners->items())->map(fn(Winner $w) => $w->getDataBulk())->split(2)->toArray();
+            return true;
+        }
+
+        $this->winners = [];
+        return false;
     }
 
     public function draw()
     {
-        if (!$this->drawSessionId) {
-            $this->dispatch('error', message: 'No active draw session selected.');
-            return;
-        }
-
         $this->eventPrize->refresh();
         $remainingQuantity = $this->eventPrize->remaining_quantity;
 
         if ($remainingQuantity <= 0) {
-            $this->dispatch('error', message: 'No items left.');
+            $this->dispatch('error', message: 'Prize exhausted.');
             return;
         }
+
+        if (!$this->drawSessionId) {
+            $this->dispatch('error', message: 'Please select an active draw session.');
+            return;
+        }
+
+        $totalWinners = $this->eventPrize?->split_draw > 0 ? $this->eventPrize->split_draw : $remainingQuantity;
 
         // Create a batch record
         $batch = \App\Models\BulkDrawBatch::create([
             'event_prize_id' => $this->eventPrize->id,
             'draw_session_id' => $this->drawSessionId,
-            'total_winners' => $remainingQuantity,
+            'total_winners' => $totalWinners,
             'status' => 'PENDING',
             'created_by' => 'Public User',
         ]);
 
         $this->batchId = $batch->id;
         $this->batchStatus = 'PENDING';
-        $this->totalToProcess = $remainingQuantity;
+        $this->totalToProcess = $totalWinners;
         $this->processedCount = 0;
+        $this->processPercentage = 0;
         $this->isDrawing = true;
+        $this->isStopping = false;
+        $this->stopTriggeredAt = null;
 
         // Dispatch background job
         \App\Jobs\ProcessBulkDrawJob::dispatch($batch->id);
+
+        $this->dispatch('info', message: 'Drawing Started! System is generating ' . $totalWinners . ' winners in the background.');
     }
 
     public function checkBatchStatus()
@@ -90,10 +135,73 @@ class BulkDrawing extends Component
         $this->batchStatus = $batch->status;
         $this->processedCount = $batch->processed_winners;
 
-        if ($batch->status === 'COMPLETED') {
-            $this->winners = $batch->results;
-            $this->batchId = null;
-            $this->isDrawing = false;
+        // Progressive loading: Update table while processing
+        if (!$this->isStopping && $batch->results && count($batch->results) > 0) {
+            $this->isPreview = true;
+            $this->totalWinners = count($batch->results);
+
+            // Show new results combined with existing winners for perspective
+            $existingWinners = Winner::where('event_prize_id', $this->eventPrize->id)
+                ->orderBy('id', 'desc')
+                ->limit(10)
+                ->get()
+                ->map(fn(Winner $w) => $w->getDataBulk())
+                ->toArray();
+
+            $this->winners = collect(array_merge($batch->results, $existingWinners))->split(2)->toArray();
+        }
+
+        $this->processPercentage = $this->totalToProcess > 0 ? ($this->processedCount * 100 / $this->totalToProcess) : 0;
+
+        if ($batch->status === 'COMPLETED' || $batch->status === 'CANCELLED') {
+
+
+            if ($batch->status === 'COMPLETED' && !$this->isStopping && !$this->stopTriggeredAt) {
+                $this->stopTriggeredAt = time();
+            }
+
+            // If we are in stopping sequence, wait for 100% completion AND the 3s gap
+            if ($this->isStopping || $this->stopTriggeredAt) {
+                $drawDelay = Setting::where('key', 'draw_delay')->first()->value ?? 3;
+                $timeRemaining = $drawDelay - (time() - $this->stopTriggeredAt);
+                $isWorkDone = ($this->processedCount >= $this->totalToProcess);
+
+                if ($timeRemaining > 0 || !$isWorkDone) {
+                    return; // Keep polling
+                }
+            }
+
+            $this->batchId = null; // Stop polling
+            $this->isStopping = false; // Reset stopping state
+            $this->newWinners = $batch->results ?? [];
+
+            $batch->update(['status' => 'COMPLETED']);
+            $this->batchStatus = 'COMPLETED';
+
+            if ($this->alreadyConfirmed) {
+                $this->confirmWinner();
+                $this->isPreview = false;
+                $this->checkWinner();
+            } else {
+                $this->isPreview = true;
+                $this->totalWinners = count($this->newWinners);
+
+                // Show all new winners with some oldest winners
+                $existingWinners = Winner::where('event_prize_id', $this->eventPrize->id)
+                    ->orderBy('id', 'desc')
+                    ->limit(20)
+                    ->get()
+                    ->map(fn(Winner $w) => $w->getDataBulk())
+                    ->toArray();
+
+                $combined = array_merge($this->newWinners, $existingWinners);
+                $this->winners = collect($combined)->split(2)->toArray();
+                $this->isDrawing = false;
+
+                if ($batch->status === 'CANCELLED') {
+                    $this->dispatch('info', message: 'Drawing stopped. ' . count($this->newWinners) . ' winners generated.');
+                }
+            }
         } elseif ($batch->status === 'FAILED') {
             $this->batchId = null;
             $this->isDrawing = false;
@@ -101,13 +209,30 @@ class BulkDrawing extends Component
         }
     }
 
+    public function cancelBatch()
+    {
+        if (!$this->batchId)
+            return;
+
+        $batch = \App\Models\BulkDrawBatch::find($this->batchId);
+        if ($batch && in_array($batch->status, ['PENDING', 'PROCESSING', 'COMPLETED'])) {
+            $batch->update(['status' => 'CANCELLED']);
+            $this->batchStatus = 'CANCELLED';
+
+            $this->dispatch('info', message: 'Stopping drawing process... Please wait for the reveal.');
+        }
+    }
+
     public function confirmWinner()
     {
-        if (empty($this->winners))
+        // Use newWinners if coming from a batch, otherwise flatten currently displayed winners and filter for un-persisted ones
+        $toConfirm = !empty($this->newWinners) ? $this->newWinners : collect($this->winners)->flatten(1)->filter(fn($w) => !isset($w['id']))->toArray();
+
+        if (empty($toConfirm))
             return;
 
         $this->eventPrize->refresh();
-        $count = count($this->winners);
+        $count = count($toConfirm);
         if ($this->eventPrize->remaining_quantity < $count) {
             $this->dispatch('error', message: "Remaining quantity ({$this->eventPrize->remaining_quantity}) is less than winners picked.");
             return;
@@ -115,7 +240,7 @@ class BulkDrawing extends Component
 
         \DB::beginTransaction();
         try {
-            foreach ($this->winners as $winnerData) {
+            foreach ($toConfirm as $winnerData) {
                 $customer_id = $winnerData['customer']['id'];
                 $alreadyWon = Winner::whereHas('eventPrize', fn($q) => $q->where('event_prizes.event_id', $this->eventPrize->event_id))
                     ->whereHas('participant.account', fn($q) => $q->where('customer_id', $customer_id))
@@ -148,15 +273,24 @@ class BulkDrawing extends Component
                     'total_points' => $winnerData['ticket']['total_points'],
                     'range_start' => $winnerData['ticket']['range_start'],
                     'range_end' => $winnerData['ticket']['range_end'],
-                    'status' => 'PENDING',
+                    'status' => Winner::STATUS_PENDING,
+                    'branch_id' => $winnerData['account']['branch']['id'],
+                    'branch_code' => $winnerData['account']['branch']['code'],
+                    'branch_name' => $winnerData['account']['branch']['branch_name'],
+                    'branch_company_book' => $winnerData['account']['branch']['company_book'],
+                    'branch_region' => $winnerData['account']['branch']['region'],
                 ]);
 
                 $this->eventPrize->decrement('remaining_quantity');
             }
 
             \DB::commit();
+            $this->newWinners = [];
             $this->winners = [];
+            $this->isPreview = false;
+            $this->dispatch('success', message: $count . ' winners confirmed and saved successfully!');
             $this->dispatch('winner-confirmed');
+            $this->checkWinner();
         } catch (\Exception $e) {
             \DB::rollBack();
             $this->dispatch('error', message: $e->getMessage());

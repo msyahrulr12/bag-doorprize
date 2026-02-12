@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use OwenIt\Auditing\Contracts\Auditable;
+use Illuminate\Support\Str;
 
 class EventPrize extends Model implements Auditable
 {
@@ -17,6 +18,7 @@ class EventPrize extends Model implements Auditable
         'total_quantity',
         'remaining_quantity',
         'min_points_required',
+        'split_draw',
     ];
 
     public function event()
@@ -27,5 +29,18 @@ class EventPrize extends Model implements Auditable
     public function prize()
     {
         return $this->belongsTo(Prize::class);
+    }
+
+    protected static function booted()
+    {
+        static::creating(function ($model) {
+            $model->uuid = (string) Str::uuid();
+            if (is_null($model->remaining_quantity) || $model->remaining_quantity === 0) {
+                $model->remaining_quantity = $model->total_quantity;
+            }
+            if (is_null($model->split_draw) || $model->split_draw === 0) {
+                $model->split_draw = $model->total_quantity;
+            }
+        });
     }
 }

@@ -7,6 +7,8 @@ use Filament\Resources\Pages\CreateRecord;
 
 class CreateBranch extends CreateRecord
 {
+    use \App\Traits\InteractsWithApprovals;
+
     protected static string $resource = BranchResource::class;
 
     protected function getRedirectUrl(): string

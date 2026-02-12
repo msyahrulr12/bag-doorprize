@@ -9,6 +9,7 @@ use App\Filament\Resources\Customers\RelationManagers\DocumentsRelationManager;
 use App\Filament\Resources\Customers\Schemas\CustomerForm;
 use App\Filament\Resources\Customers\Tables\CustomersTable;
 use App\Filament\Resources\Customers\Pages\ViewCustomer;
+use App\Models\Branch;
 use App\Models\Customer;
 use BackedEnum;
 use Filament\Resources\Resource;
@@ -64,5 +65,14 @@ class CustomerResource extends Resource
             ->withoutGlobalScopes([
                 // SoftDeletingScope::class,
             ]);
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->whereHas('branch', fn($query) => $query->where('status', Branch::STATUS_ACTIVE))
+            ->when(!auth()->user()->hasRole('super_admin'), function ($query) {
+                $query->whereIn('branch_id', auth()->user()->branches->pluck('id'));
+            });
     }
 }

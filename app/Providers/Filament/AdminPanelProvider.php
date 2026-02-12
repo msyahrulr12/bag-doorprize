@@ -31,6 +31,9 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
+            // ->brandName('BAGI UNDIAN')
+            ->brandLogo(asset('images/logo-agi.png'))
+            ->brandLogoHeight('2.5rem')
             ->viteTheme('resources/css/filament/admin/theme.css')
             ->login()
             ->colors([
@@ -61,12 +64,11 @@ class AdminPanelProvider extends PanelProvider
             )
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
-                Dashboard::class,
+                \App\Filament\Pages\Dashboard::class,
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->widgets([
-                AccountWidget::class,
-                FilamentInfoWidget::class
+                // Default widgets removed to focus on custom business dashboard
             ])
             ->middleware([
                 EncryptCookies::class,

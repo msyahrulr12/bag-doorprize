@@ -2,8 +2,12 @@
 
 namespace App\Filament\Resources\Settings\Schemas;
 
+use App\Models\Setting;
+use Filament\Forms\Components\KeyValue;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Schema;
 
 class SettingForm
@@ -12,30 +16,18 @@ class SettingForm
     {
         return $schema
             ->components([
-                TextInput::make('group')
+                Select::make('group')
+                    ->options(Setting::GROUP)
                     ->required()
                     ->default('general'),
                 TextInput::make('key')
                     ->required(),
-                \Filament\Forms\Components\KeyValue::make('value')
-                    ->label('Value (JSON)')
-                    ->visible(fn($get) => $get('type') === 'json')
-                    ->formatStateUsing(fn($state) => is_string($state) ? json_decode($state, true) : $state)
-                    ->dehydrateStateUsing(fn($state) => json_encode($state))
-                    ->columnSpanFull(),
-                Textarea::make('value')
-                    ->visible(fn($get) => $get('type') !== 'json')
-                    ->columnSpanFull(),
-                \Filament\Forms\Components\Select::make('type')
-                    ->options([
-                        'string' => 'String',
-                        'integer' => 'Integer',
-                        'boolean' => 'Boolean',
-                        'json' => 'JSON',
-                    ])
+                Select::make('type')
+                    ->options(Setting::TYPE)
                     ->required()
-                    ->live()
-                    ->default('string'),
+                    ->live(),
+                Textarea::make('value')
+                    ->columnSpanFull(),
             ]);
     }
 }

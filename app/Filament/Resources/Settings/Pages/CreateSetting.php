@@ -7,5 +7,7 @@ use Filament\Resources\Pages\CreateRecord;
 
 class CreateSetting extends CreateRecord
 {
+    use \App\Traits\InteractsWithApprovals;
+
     protected static string $resource = SettingResource::class;
 }

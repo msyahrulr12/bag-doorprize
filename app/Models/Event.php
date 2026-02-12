@@ -32,6 +32,23 @@ class Event extends Model implements Auditable
         self::STATUS_COMPLETED => 'COMPLETED'
     ];
 
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::saving(function ($event) {
+            if ($event->status === self::STATUS_ACTIVE) {
+                $activeEvent = self::where('status', self::STATUS_ACTIVE)
+                    ->where('id', '!=', $event->id)
+                    ->exists();
+
+                if ($activeEvent) {
+                    throw new \Exception('There is already an active event. Please complete the current active event before activating a new one.');
+                }
+            }
+        });
+    }
+
     public function eventPrizes()
     {
         return $this->hasMany(EventPrize::class);
@@ -39,12 +56,12 @@ class Event extends Model implements Auditable
 
     public function lotteryTickets()
     {
-        return $this->hasMany(LotteryTicket::class);
+        return $this->belongsToMany(LotteryTicket::class, 'event_lottery_ticket');
     }
 
     public function participants()
     {
-        return $this->hasMany(Participant::class);
+        return $this->belongsToMany(Participant::class, 'event_participant');
     }
 
     public function prizes()

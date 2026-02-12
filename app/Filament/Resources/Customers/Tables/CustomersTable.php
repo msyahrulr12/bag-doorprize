@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Customers\Tables;
 
 use App\Filament\Exports\CustomerExporter;
 use App\Filament\Imports\CustomerImporter;
+use App\Models\Branch;
 use App\Models\Customer;
 use App\Models\LotteryTicket;
 use Filament\Actions\BulkActionGroup;
@@ -16,6 +17,8 @@ use Filament\Actions\RestoreBulkAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TrashedFilter;
+use Filament\Tables\Filters\SelectFilter;
+use Illuminate\Database\Eloquent\Builder;
 use Filament\Tables\Table;
 
 class CustomersTable
@@ -58,7 +61,19 @@ class CustomersTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                // TrashedFilter::make(),
+                SelectFilter::make('branch')
+                    ->relationship(
+                        'branch',
+                        'branch_name',
+                        modifyQueryUsing: fn(Builder $query) => $query
+                            ->where('status', Branch::STATUS_ACTIVE)
+                            ->when(
+                                !auth()->user()->hasRole('super_admin'),
+                                fn($q) => $q->whereIn('id', auth()->user()->branches->pluck('id'))
+                            )
+                    )
+                    ->searchable()
+                    ->preload(),
             ])
             ->recordActions([
                 // EditAction::make(),

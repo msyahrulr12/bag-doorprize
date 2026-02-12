@@ -1,0 +1,33 @@
+# Table Descriptions for Bag-Doorprize Project
+
+## 1. Core Business Entities
+- **branches**: Stores bank branch information (name, code, address, status, region, etc.).
+- **customers**: Stores customer profile data (CIF, name, email, phone, date of birth, address, etc.).
+- **accounts**: Stores account information linked to customers and branches (account number, type, balance, product, etc.).
+- **products**: Stores bank product categories (e.g., Savings, Current Account) which accounts belong to.
+- **account_documents**: Stores documents uploaded or linked to specific customer accounts.
+
+## 2. Event & Drawing Management
+- **events**: Core table for drawing events (Grand Drawing, Monthly Drawing) with date ranges and ticket numbering settings.
+- **prizes**: Master list of prizes available (Grand Prize, consolation prize, etc.).
+- **event_prizes**: Links prizes to specific events, including the quantity and draw order for each event.
+- **draw_sessions**: Tracks active or completed drawing sessions for an event.
+- **bulk_draw_batches**: Manages groups of winners drawn in a single bulk process.
+
+## 3. Participation & Points Logic
+- **participants**: Links accounts to specific events. Snapshot of customer/account data at the time of entry.
+- **point_histories**: Tracks historical point balance changes for participants, used to calculate lottery ticket eligibility.
+- **lottery_tickets**: Stores the actual lottery ticket ranges (range_start to range_end) assigned to participants based on their points for a specific period (month/year).
+- **winners**: Records the participants who won a prize in an event, including the winning ticket number and the prize details.
+
+## 4. Security & System
+- **users**: Stores administrative user accounts for the Filament dashboard.
+- **roles** & **permissions**: (Spatie/Shield) Manages access control and permissions for users.
+- **branch_user**: Pivot table linking users to branches, used to restrict data visibility so users only see their branch's customers.
+- **audits**: Logs changes to records for tracking and accountability (via OwenIt/Auditing).
+- **notifications**: Stores system-wide or user-specific notifications.
+- **imports** & **exports**: Tracks the status and logs of data import/export processes.
+- **failed_import_rows**: Details of specific rows that failed during a data import.
+- **settings**: Stores application-wide configuration values.
+- **jobs** & **failed_jobs**: Manages background task queuing (e.g., point processing, batch imports).
+- **cache**: Used for performance optimization and session storage.

@@ -30,17 +30,15 @@ class CreateLotteryTickets implements ShouldQueue
         $participantMap = $event->participantMap;
         $eventId = $event->eventId;
 
-        Log::info('point history: ' . json_encode($pointHistoriesRaw));
-        Log::info('participant: ' . json_encode($participantMap));
-        Log::info('event ID: ' . $eventId);
-
         // 1. Prepare data and calculate total points for this chunk
         $totalPointsInChunk = 0;
         $pointsMap = [];
+        $descriptionMap = [];
         foreach ($pointHistoriesRaw as $ph) {
             if (isset($ph['points']) && $ph['points'] > 0) {
                 $totalPointsInChunk += $ph['points'];
                 $pointsMap[$ph['account_id']] = $ph['points'];
+                $descriptionMap[$ph['account_id']] = $ph['description'];
             }
         }
 
@@ -91,7 +89,7 @@ class CreateLotteryTickets implements ShouldQueue
                 'range_start' => $range_start,
                 'range_end' => $range_end,
                 'status' => LotteryTicket::STATUS_ACTIVE,
-                'description' => "Monthly lottery tickets for {$event->month}/{$event->year}",
+                'description' => $descriptionMap[$accountId],
                 'updated_at' => now(),
             ]);
         }

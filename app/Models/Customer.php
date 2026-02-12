@@ -21,11 +21,14 @@ class Customer extends Model implements Auditable
         'total_point_sum',
         'redeemed_points',
         'status',
+        'date_of_birth',
     ];
 
+    public const STATUS_ACTIVE = 'ACTIVE';
+    public const STATUS_INACTIVE = 'INACTIVE';
     public const STATUS = [
-        'active' => 'Active',
-        'inactive' => 'Inactive',
+        self::STATUS_ACTIVE => 'ACTIVE',
+        self::STATUS_INACTIVE => 'INACTIVE',
     ];
 
     public function branch()

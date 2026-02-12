@@ -10,6 +10,31 @@ class Participant extends Model implements Auditable
 {
     use \OwenIt\Auditing\Auditable, SoftDeletes;
 
+    public const STATUS_ACTIVE = 'ACTIVE';
+    public const STATUS_INACTIVE = 'INACTIVE';
+
+    public const STATUS = [
+        self::STATUS_ACTIVE => 'ACTIVE',
+        self::STATUS_INACTIVE => 'INACTIVE',
+    ];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::created(function ($participant) {
+            if ($participant->event_id) {
+                $participant->events()->syncWithoutDetaching([$participant->event_id]);
+            }
+        });
+
+        static::updated(function ($participant) {
+            if ($participant->isDirty('event_id') && $participant->event_id) {
+                $participant->events()->syncWithoutDetaching([$participant->event_id]);
+            }
+        });
+    }
+
     protected $fillable = [
         'event_id',
         'account_id',
@@ -29,6 +54,11 @@ class Participant extends Model implements Auditable
         return $this->belongsTo(Event::class);
     }
 
+    public function events()
+    {
+        return $this->belongsToMany(Event::class, 'event_participant');
+    }
+
     public function account()
     {
         return $this->belongsTo(Account::class);
@@ -36,7 +66,7 @@ class Participant extends Model implements Auditable
 
     public function lotteryTickets()
     {
-        return $this->hasMany(LotteryTicket::class);
+        return $this->hasMany(LotteryTicket::class)->orderBy('month', 'asc')->orderBy('year', 'asc');
     }
 
     public function winners()

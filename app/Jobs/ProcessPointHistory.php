@@ -91,7 +91,8 @@ class ProcessPointHistory implements ShouldQueue
                 'name' => $row['name'],
                 'cif' => $row['cif'],
                 'email' => $row['email'],
-                'status' => 'active',
+                'status' => Customer::STATUS_ACTIVE,
+                'date_of_birth' => isset($row['date_of_birth']) && $row['date_of_birth'] !== '' ? $row['date_of_birth'] : null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
@@ -138,6 +139,7 @@ class ProcessPointHistory implements ShouldQueue
                 'current_balance' => ($row['avgbal_tab'] ?? $row['avg_balance']) ?? 0,
                 'created_at' => now(),
                 'updated_at' => now(),
+                'status' => Account::STATUS_ACTIVE,
             ];
         }
 
@@ -183,6 +185,7 @@ class ProcessPointHistory implements ShouldQueue
         $divider = (float) ($this->settings['point_divider'] ?? 100000);
 
         foreach ($rows as $row) {
+            $accountNumber = $row['account_number'] ?? $row['ac_id'];
             $accountId = $accountMap[$row['account_number'] ?? $row['ac_id']] ?? null;
             if (!$accountId) {
                 continue;
@@ -194,25 +197,34 @@ class ProcessPointHistory implements ShouldQueue
 
             // Trend check: if current - previous is minus (Step Id: 200/314)
             $thresholdReductionBalance = $this->settings['threshold_reduction_balance'] ?? 100000;
-            $isNegativeTrend = (($growth + $thresholdReductionBalance) < 0);
-
+            // $isNegativeTrend = (($growth + $thresholdReductionBalance) < 0);
+            $isNegativeTrend = ($growth < 0) && (abs($growth) > $thresholdReductionBalance);
             $type = PointHistory::POINT_TYPE_EARN;
+            $typeText = "BERTAMBAH";
             if ($isNegativeTrend) {
                 $participant = Participant::where('account_id', $accountId)->first();
                 $points = $participant ? -(LotteryTicket::where('participant_id', $participant->id)->where('status', LotteryTicket::STATUS_ACTIVE)->sum('total_points')) : 0;
-                $accountsToReset[] = $accountId;
                 Log::info(sprintf("Account %s has negative growth (%s). Resetting points.", $row['account_number'] ?? $row['ac_id'], $growth));
                 $type = PointHistory::POINT_TYPE_EXPIRED;
+                $typeText = "BERKURANG";
+                $accountsToReset[$accountId] = [
+                    'account_id' => $accountId,
+                    'type_text' => $typeText,
+                    'points' => $points,
+                    'account_number' => $accountNumber,
+                ];
             } elseif ($growth == 0) {
                 $points = 0;
+                $type = PointHistory::POINT_TYPE_EARN;
+                $typeText = "BERTAMBAH";
             } else {
-                // Growth is positive
-                // Point calculation based on type (Step Id: 283/314)
+                // Point calculation based on type
                 $openingPoints = 0;
                 if ($this->type === 'ntb' && (float) ($row['account_opening_balance'] ?? 0) >= ($this->settings['min_opening_balance'] ?? 500000)) {
                     $openingPoints = $this->settings['base_point_ntb'] ?? 10;
                 }
-                $points = floor($growth / $divider);
+                $points = (int) floor($growth / $divider);
+                $points = $points < 0 ? 0 : $points;
                 $points += $openingPoints;
             }
 
@@ -223,7 +235,7 @@ class ProcessPointHistory implements ShouldQueue
                 'year' => $this->year,
                 'points' => (int) $points,
                 'type' => $type,
-                'description' => "Monthly point earn for {$this->month}/{$this->year} ({$this->type}) - Growth: " . number_format($growth, 0),
+                'description' => "REK {$accountNumber} {$typeText} " . abs((int) $points) . " KUPON",
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
@@ -232,28 +244,49 @@ class ProcessPointHistory implements ShouldQueue
         Log::info('Total Data PointHistories: ' . count($pointHistories));
 
         if (!empty($pointHistories)) {
-            PointHistory::upsert(
-                $pointHistories,
-                ['account_id', 'month', 'year'],
-                ['amount', 'points', 'description', 'updated_at']
-            );
+            foreach ($pointHistories as $ph) {
+                // Since the unique constraint on (account_id, month, year) was removed to allow manual corrections,
+                // we use updateOrCreate to maintain automated records without crashing.
+                PointHistory::updateOrCreate(
+                    [
+                        'account_id' => $ph['account_id'],
+                        'month' => $ph['month'],
+                        'year' => $ph['year'],
+                        'type' => $ph['type'],
+                    ],
+                    [
+                        'amount' => $ph['amount'],
+                        'points' => $ph['points'],
+                        'description' => $ph['description'],
+                        'updated_at' => $ph['updated_at'],
+                    ]
+                );
+            }
         }
 
         // 4. Handle resetting lottery tickets if any
         if ($this->eventId && !empty($accountsToReset)) {
-            $participantIds = Participant::where('event_id', $this->eventId)
-                ->whereIn('account_id', $accountsToReset)
-                ->pluck('id')
-                ->toArray();
+            // $participantIds = Participant::where('event_id', $this->eventId)
+            //     ->whereIn('account_id', array_column($accountsToReset, 'account_id'))
+            //     ->pluck('id')
+            //     ->toArray();
+            $participants = Participant::where('event_id', $this->eventId)
+                ->whereIn('account_id', array_column($accountsToReset, 'account_id'))
+                ->get();
 
-            if (!empty($participantIds)) {
-                LotteryTicket::where('event_id', $this->eventId)
-                    ->whereIn('participant_id', $participantIds)
-                    ->update([
-                        'status' => LotteryTicket::STATUS_RESET,
-                        'description' => 'Reset due to negative balance trend'
-                    ]);
-                Log::info('Reset lottery tickets for ' . count($participantIds) . ' participants');
+            if (!empty($participants)) {
+                foreach ($participants as $participant) {
+                    $accountNumber = $participant->account->account_number;
+                    $typeText = $accountsToReset[$participant->account_id]['type_text'];
+                    $points = $accountsToReset[$participant->account_id]['points'];
+                    LotteryTicket::where('event_id', $this->eventId)
+                        ->where('participant_id', $participant->id)
+                        ->update([
+                            'status' => LotteryTicket::STATUS_RESET,
+                            'description' => "REK {$accountNumber} {$typeText} {$points} KUPON",
+                        ]);
+                }
+                Log::info('Reset lottery tickets for ' . count($participants) . ' participants');
             }
         }
 

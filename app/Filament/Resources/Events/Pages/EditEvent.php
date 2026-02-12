@@ -12,6 +12,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditEvent extends EditRecord
 {
+    use \App\Traits\InteractsWithApprovals;
+
     protected static string $resource = EventResource::class;
 
     protected function getHeaderActions(): array

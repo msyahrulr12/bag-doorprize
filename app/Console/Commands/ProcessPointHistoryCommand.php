@@ -68,10 +68,12 @@ class ProcessPointHistoryCommand extends Command
 
             // Files to process
             $subMonth = $settings['point_sub_month'] ?? 1;
-            $lastMonth = DateHelper::getMonthYear(now()->subMonths($subMonth));
+            $currentDate = now()->subMonths($subMonth);
+            $lastMonth = $currentDate->lastOfMonth()->format('Y-m-d');
+            $pathDataSource = env('PATH_DATA_SOURCE', 'Prodev/Aplikasi_Undian');
             $files = [
-                'ntb' => "NTB {$lastMonth}.csv",
-                'etb' => "ETB {$lastMonth}.csv",
+                'ntb' => "{$pathDataSource}/Data_Nasabah_NTB_{$lastMonth}.csv",
+                'etb' => "{$pathDataSource}/Data_Nasabah_ETB_{$lastMonth}.csv",
             ];
 
             $disk = Storage::disk('s3');
@@ -84,27 +86,8 @@ class ProcessPointHistoryCommand extends Command
 
                 $content = $disk->get($filename);
 
-                // Extract month and year from filename (format: TYPE Month Year.csv)
-                preg_match('/([a-zA-Z]+)\s+(\d{4})/', $filename, $matches);
-                $monthName = $matches[1] ?? '';
-                $year = (int) ($matches[2] ?? now()->year);
-
-                // Use simple map for Indonesian/English months just in case
-                $monthsMap = [
-                    'Januari' => 1,
-                    'Februari' => 2,
-                    'Maret' => 3,
-                    'April' => 4,
-                    'Mei' => 5,
-                    'Juni' => 6,
-                    'Juli' => 7,
-                    'Agustus' => 8,
-                    'September' => 9,
-                    'Oktober' => 10,
-                    'November' => 11,
-                    'Desember' => 12,
-                ];
-                $month = $monthsMap[$monthName] ?? (\Carbon\Carbon::hasFormat($monthName, 'F') ? \Carbon\Carbon::parse($monthName)->month : now()->month);
+                $month = $currentDate->month;
+                $year = $currentDate->year;
                 $separator = '|';
 
                 $this->processFile($content, $type, $month, $year, $separator, $products, $branches, $event->id, $settings);

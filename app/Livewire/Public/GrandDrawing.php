@@ -10,15 +10,30 @@ use App\Models\Winner;
 use App\Models\Prize;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
+use Livewire\WithPagination;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\WithoutScrolling;
 
+#[WithoutScrolling]
 class GrandDrawing extends Component
 {
+    use WithPagination;
     public $uuid;
     public $eventPrize;
     public $drawSessionId;
-    public $winner = null;
-    public $candidates = []; // Real tickets for animation
+    public $winners = [];
     public $isDrawing = false;
+    public $pendingWinner = null;
+    public bool $enableRedraw = false;
+    public bool $isPreview = false;
+    public $winner = null;
+    public $candidates = [];
+
+    #[Computed]
+    public function paginatedWinners()
+    {
+        return Winner::where('event_prize_id', $this->eventPrize->id)->orderBy('id', 'desc')->paginate(30);
+    }
 
     public function mount($uuid)
     {
@@ -27,24 +42,75 @@ class GrandDrawing extends Component
 
         // Auto-select active session if exists
         $this->drawSessionId = DrawSession::where('event_id', $this->eventPrize->event_id)
-            ->where('status', 'ACTIVE')
+            ->where('status', DrawSession::STATUS_ACTIVE)
+            ->where('started_at', '<=', now())
+            ->where('ended_at', '>=', now())
             ->first()?->id;
+
+        $this->enableRedraw = (bool) Setting::where('key', 'activate_re_draw_and_confirm')->first()->value ?? true;
+
+        $this->checkWinner();
+    }
+
+    public function updatedPage()
+    {
+        if (!$this->isPreview) {
+            $this->checkWinner();
+        }
+    }
+
+    private function checkWinner()
+    {
+        $this->isPreview = false;
+        $paginatedWinners = $this->paginatedWinners;
+
+        if ($paginatedWinners->count() > 0) {
+            $this->winner = [
+                'ticket' => $paginatedWinners->first()->ticket?->toArray() ?? [],
+                'participant' => $paginatedWinners->first()->participant?->toArray() ?? [],
+                'customer' => $paginatedWinners->first()->participant?->account?->customer?->toArray() ?? [],
+                'lucky_number' => $paginatedWinners->first()->winning_number,
+                'winning_number' => $paginatedWinners->first()->winning_number,
+                'draw_session_id' => $paginatedWinners->first()->draw_session_id
+            ];
+
+            // For the table display
+            $this->winners = collect($paginatedWinners->items())->map(fn(Winner $w) => $w->getDataBulk())->split(2)->toArray();
+
+            return true;
+        }
+
+        $this->winners = [];
+        return false;
     }
 
     public function startDrawing()
     {
+        $this->eventPrize->refresh();
+        if ($this->eventPrize->remaining_quantity <= 0) {
+            $this->dispatch('error', message: 'Prize exhausted.');
+            return;
+        }
+
         if (!$this->drawSessionId) {
             $this->dispatch('error', message: 'No active draw session selected.');
             return;
         }
 
         $this->isDrawing = true;
-        // Animation delay simulation
         $this->dispatch('trigger-animation');
     }
 
     public function performDraw()
     {
+        // Check if prize is still available right before finding a winner
+        $this->eventPrize->refresh();
+        if ($this->eventPrize->remaining_quantity <= 0) {
+            $this->isDrawing = false;
+            $this->dispatch('error', message: 'Prize exhausted.');
+            return;
+        }
+
         $eventId = $this->eventPrize->event_id;
 
         // Fetch weights from Settings
@@ -107,7 +173,8 @@ class GrandDrawing extends Component
         $winnerTicket->load(['participant.account.branch', 'participant.account.customer']);
         $luckyNumber = $this->generateLuckyNumber($winnerTicket);
 
-        $this->winner = [
+        $this->isPreview = true;
+        $this->pendingWinner = [
             'ticket' => $winnerTicket->toArray(),
             'participant' => $winnerTicket->participant->toArray(),
             'customer' => $winnerTicket->participant->account->customer->toArray(),
@@ -115,9 +182,27 @@ class GrandDrawing extends Component
             'winning_number' => $winnerTicket->range_start === $winnerTicket->range_end
                 ? $winnerTicket->range_start
                 : "{$winnerTicket->range_start} - {$winnerTicket->range_end}",
+            'draw_session_id' => $this->drawSessionId,
         ];
 
+        // Keep isDrawing = true until finishDrawing is called after animation
+        $this->winner = null;
+    }
+
+    public function finishDrawing()
+    {
+        if (!$this->pendingWinner)
+            return;
+
+        $this->winner = $this->pendingWinner;
+        $this->pendingWinner = null;
         $this->isDrawing = false;
+        $this->isPreview = true;
+
+        if (!$this->enableRedraw) {
+            $this->confirmWinner();
+            $this->checkWinner();
+        }
     }
 
     private function generateLuckyNumber($ticket): string
@@ -199,6 +284,18 @@ class GrandDrawing extends Component
         $winnerData = $this->winner;
         $ticketId = $winnerData['ticket']['id'] ?? null;
         $participantId = $winnerData['participant']['id'] ?? null;
+        $customerId = $winnerData['customer']['id'] ?? null;
+
+        // Re-check customer eligibility one last time
+        $alreadyWon = Winner::whereHas('eventPrize', fn($q) => $q->where('event_prizes.event_id', $this->eventPrize->event_id))
+            ->whereHas('participant.account', fn($q) => $q->where('customer_id', $customerId))
+            ->exists();
+
+        if ($alreadyWon) {
+            $this->dispatch('error', message: "This customer has already won in this event.");
+            $this->winner = null;
+            return;
+        }
 
         Winner::create([
             'participant_id' => $participantId,
@@ -216,20 +313,28 @@ class GrandDrawing extends Component
             'event_code' => $this->eventPrize->event->event_code,
             'event_name' => $this->eventPrize->event->event_name,
             'draw_session_id' => $this->drawSessionId,
-            'winning_number' => $this->winner['winning_number'],
+            'winning_number' => $this->winner['lucky_number'],
             'drawn_at' => now(),
             'drawn_by' => Auth::user()->name ?? 'Guest User',
             'lottery_ticket_id' => $ticketId,
             'total_points' => $winnerData['ticket']['total_points'],
             'range_start' => $winnerData['ticket']['range_start'],
             'range_end' => $winnerData['ticket']['range_end'],
-            'status' => 'PENDING',
+            'status' => Winner::STATUS_PENDING,
+            'branch_id' => $winnerData['participant']['account']['branch_id'],
+            'branch_code' => $winnerData['participant']['account']['branch_code'],
+            'branch_name' => $winnerData['participant']['account']['branch_name'],
+            'branch_company_book' => $winnerData['participant']['account']['branch_company_book'],
+            'branch_region' => $winnerData['participant']['account']['branch_region'],
         ]);
 
         $this->eventPrize->decrement('remaining_quantity');
 
+        $this->dispatch('success', message: 'Winner confirmed and saved successfully!');
         $this->dispatch('winner-confirmed');
         $this->winner = null;
+        $this->isPreview = false;
+        $this->checkWinner();
     }
 
     public function render()

@@ -24,6 +24,46 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        \Filament\Actions\Action::configureUsing(function (\Filament\Actions\Action $action) {
+            $this->applyApprovalLogic($action);
+        });
 
+        \Filament\Actions\BulkAction::configureUsing(function (\Filament\Actions\BulkAction $action) {
+            // Optional: Handle bulk actions if needed
+        });
+    }
+
+    private function applyApprovalLogic($action): void
+    {
+        if ($action instanceof \Filament\Actions\DeleteAction) {
+            $action->before(function (\Illuminate\Database\Eloquent\Model $record, \Filament\Actions\DeleteAction $action) {
+                // For table actions, we can get the livewire component
+                $livewire = method_exists($action, 'getLivewire') ? $action->getLivewire() : null;
+
+                // If it's a table action but getLivewire returns table/container
+                if (method_exists($action, 'getTable')) {
+                    $livewire = $action->getTable()->getLivewire();
+                }
+
+                $resource = ($livewire && property_exists($livewire, 'resource')) ? $livewire->resource : null;
+
+                if (!$resource) {
+                    return;
+                }
+
+                $resourceName = class_basename($resource);
+
+                if (\App\Models\ApprovalConfig::isRequired($resourceName, 'delete')) {
+                    \App\Services\ApprovalService::createRequest($resourceName, 'delete', $record);
+
+                    \Filament\Notifications\Notification::make()
+                        ->title('Deletion request sent for approval.')
+                        ->success()
+                        ->send();
+
+                    $action->halt();
+                }
+            });
+        }
     }
 }

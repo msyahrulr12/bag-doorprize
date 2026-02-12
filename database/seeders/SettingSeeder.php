@@ -36,7 +36,25 @@ class SettingSeeder extends Seeder
             ['key' => 'base_point_ntb'],
             [
                 'group' => 'general',
-                'value' => 50,
+                'value' => 10,
+                'type' => 'integer',
+            ]
+        );
+
+        Setting::updateOrCreate(
+            ['key' => 'point_sub_month'],
+            [
+                'group' => 'general',
+                'value' => 1,
+                'type' => 'integer',
+            ]
+        );
+
+        Setting::updateOrCreate(
+            ['key' => 'threshold_reduction_balance'],
+            [
+                'group' => 'general',
+                'value' => 100000,
                 'type' => 'integer',
             ]
         );
@@ -52,6 +70,33 @@ class SettingSeeder extends Seeder
                     'Lainnya' => 10,
                 ]),
                 'type' => 'json',
+            ]
+        );
+
+        Setting::updateOrCreate(
+            ['key' => 'activate_re_draw_and_confirm'],
+            [
+                'group' => 'drawing',
+                'value' => false,
+                'type' => 'boolean',
+            ]
+        );
+
+        Setting::updateOrCreate(
+            ['key' => 'merge_pdf_bank_statement'],
+            [
+                'group' => 'general',
+                'value' => false,
+                'type' => 'boolean',
+            ]
+        );
+
+        Setting::updateOrCreate(
+            ['key' => 'draw_delay'],
+            [
+                'group' => 'drawing',
+                'value' => 8,
+                'type' => 'integer',
             ]
         );
     }

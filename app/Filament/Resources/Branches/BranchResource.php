@@ -53,6 +53,14 @@ class BranchResource extends Resource
         ];
     }
 
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->when(!auth()->user()->hasRole('super_admin'), function ($query) {
+                $query->whereIn('id', auth()->user()->branches->pluck('id'));
+            });
+    }
+
     public static function getRecordRouteBindingEloquentQuery(): Builder
     {
         return parent::getRecordRouteBindingEloquentQuery()

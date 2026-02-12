@@ -49,13 +49,26 @@ class Winner extends Model implements Auditable
         'status',
         'claimed_by',
         'claimed_at',
+
+        // Branches
+        'branch_id',
+        'branch_code',
+        'branch_name',
+        'branch_company_book',
+        'branch_region',
     ];
 
+    public const STATUS_PENDING = 'PENDING';
+    public const STATUS_CLAIMED = 'CLAIMED';
+    public const STATUS_EXPIRED = 'EXPIRED';
+    public const STATUS_CANCELED = 'CANCELED';
+
+
     public const WINNER_STATUS = [
-        'PENDING',
-        'CLAIMED',
-        'EXPIRED',
-        'CANCELLED'
+        self::STATUS_PENDING => 'PENDING',
+        self::STATUS_CLAIMED => 'CLAIMED',
+        self::STATUS_EXPIRED => 'EXPIRED',
+        self::STATUS_CANCELED => 'CANCELLED'
     ];
 
     public function participant()
@@ -80,13 +93,17 @@ class Winner extends Model implements Auditable
 
     public function getDataBulk()
     {
+        $this->load(['participant.account.branch']);
+
         return [
+            'id' => $this->id,
             'cif' => $this->participant_cif,
             'name' => $this->participant_name,
             'account' => [
                 'account_number' => $this->participant_account_number,
                 'branch' => [
-                    'region' => $this->participant_region
+                    'region' => $this->participant->account->branch->region ?? 'N/A',
+                    'branch_name' => $this->participant->account->branch->branch_name ?? 'N/A'
                 ],
             ],
             'ticket' => [
@@ -98,17 +115,25 @@ class Winner extends Model implements Auditable
             'participant' => [
                 'id' => $this->participant_id,
                 'participant_name' => $this->participant_name,
-                'participant_cif' => $this->participant_cif, // Actually customer cif
+                'participant_cif' => $this->participant_cif,
                 'participant_email' => $this->participant_email,
+                'participant_phone_number' => $this->participant_phone_number,
             ],
             'customer' => [
-                'id' => $this->customer_id,
+                'id' => $this->participant->account->customer_id ?? null,
             ],
             'lucky_number' => $this->winning_number,
             'winning_number' => $this->range_start === $this->range_end
                 ? $this->range_start
                 : "{$this->range_start} - {$this->range_end}",
-            'region' => $this->region
+            'region' => $this->participant->account->branch->region ?? 'N/A',
+            'branch_name' => $this->participant->account->branch->branch_name ?? 'N/A',
+            'drawn_at' => $this->drawn_at ? \Carbon\Carbon::parse($this->drawn_at)->format('Y-m-d H:i:s') : null,
         ];
+    }
+
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
     }
 }

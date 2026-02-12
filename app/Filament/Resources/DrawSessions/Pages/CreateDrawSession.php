@@ -7,5 +7,7 @@ use Filament\Resources\Pages\CreateRecord;
 
 class CreateDrawSession extends CreateRecord
 {
+    use \App\Traits\InteractsWithApprovals;
+
     protected static string $resource = DrawSessionResource::class;
 }

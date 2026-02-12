@@ -9,6 +9,13 @@
                 Prize Details
             </h2>
 
+            @if($eventPrize->prize->prize_image)
+                <div class="mb-6 relative group overflow-hidden rounded-2xl border border-gray-100 dark:border-gray-800">
+                    <img src="{{ Storage::url($eventPrize->prize->prize_image) }}"
+                        class="w-full h-48 object-contain bg-gray-50 dark:bg-gray-800 transition-transform duration-500 group-hover:scale-110">
+                </div>
+            @endif
+
             <div class="space-y-4">
                 <div class="flex justify-between items-center py-3 border-b border-gray-100 dark:border-gray-800">
                     <span class="text-gray-500 dark:text-gray-400">Prize Name</span>
@@ -59,7 +66,8 @@
                 {{ $this->form }}
 
                 <x-filament::button type="submit" size="xl" color="primary"
-                    class="w-full shadow-lg shadow-primary-500/30 font-bold py-4" wire:loading.attr="disabled">
+                    class="w-full shadow-lg shadow-primary-500/30 font-bold py-4" wire:loading.attr="disabled"
+                    :disabled="$winner">
                     <span wire:loading.remove class="flex items-center gap-2">
                         <x-heroicon-s-bolt class="w-5 h-5" />
                         GENERATE WINNER
@@ -88,7 +96,70 @@
         </div>
     </div>
 
-    @if($winner)
+    @if($isDrawing)
+        <div x-data="{
+                        digits: '00000000',
+                        target: '{{ $pendingWinner['lucky_number'] }}',
+                        isStopping: false,
+                        init() {
+                            let interval = setInterval(() => {
+                                if (this.isStopping) return;
+                                this.digits = Math.floor(Math.random() * 99999999).toString().padStart(8, '0');
+                            }, 50);
+
+                            setTimeout(() => {
+                                if(!this.isStopping) this.stop();
+                            }, 5000);
+                        },
+                        stop() {
+                            this.isStopping = true;
+                            this.digits = this.target;
+                            setTimeout(() => {
+                                $wire.finishDrawing();
+                            }, 1500); 
+                        }
+                    }"
+            class="mt-12 bg-gray-950 rounded-3xl shadow-2xl p-12 text-center relative overflow-hidden border border-white/10">
+            <div class="relative z-10">
+                <div
+                    class="inline-flex items-center gap-2 px-4 py-2 bg-primary-500/10 rounded-full border border-primary-500/20 mb-8">
+                    <span class="relative flex h-3 w-3">
+                        <span
+                            class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-3 w-3 bg-primary-500"></span>
+                    </span>
+                    <span class="text-primary-400 font-bold text-[10px] uppercase tracking-[0.3em]">Processing Draw
+                        Sequence</span>
+                </div>
+
+                <div class="flex justify-center items-center gap-3 mb-10">
+                    <template x-for="(digit, index) in digits.split('')" :key="index">
+                        <div
+                            class="w-14 h-20 bg-gradient-to-b from-gray-800 to-gray-900 rounded-xl border border-white/5 flex items-center justify-center shadow-lg">
+                            <span class="text-5xl font-black font-mono text-white tracking-tighter" x-text="digit"></span>
+                        </div>
+                    </template>
+                </div>
+
+                <div class="max-w-xs mx-auto">
+                    <x-filament::button x-show="!isStopping" x-on:click="stop()" color="primary" size="xl"
+                        class="w-full font-black py-4 shadow-xl hover:scale-105 transition-all bg-primary-600">
+                        <span class="flex items-center justify-center gap-2">
+                            <x-heroicon-s-bolt class="w-5 h-5" />
+                            STOP & REVEAL
+                        </span>
+                    </x-filament::button>
+
+                    <div x-show="isStopping" class="flex flex-col items-center gap-3 animate-pulse">
+                        <x-filament::loading-indicator class="w-8 h-8 text-primary-500" />
+                        <span class="text-primary-400 font-black text-xs uppercase tracking-[0.4em]">Target Found</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if(!$isDrawing && $winner)
         <div x-data="{ show: true }" x-show="show" x-transition:enter="transition ease-out duration-300"
             x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0"
             class="mt-8 bg-gradient-to-br from-primary-600 via-primary-700 to-indigo-800 rounded-2xl shadow-2xl p-8 text-white relative overflow-hidden">
@@ -109,7 +180,7 @@
                         </div>
                         <div
                             class="px-4 py-1 bg-white/20 backdrop-blur-md text-white rounded-full text-sm font-bold uppercase tracking-widest border border-white/10">
-                            Region: {{ $winner['participant']->account->branch->region ?? 'Lainnya' }}
+                            Branch: {{ $winner['participant']->account->branch->branch_name ?? 'N/A' }}
                         </div>
                     </div>
                     <h3 class="text-3xl font-black mb-1">CONGRATULATIONS!</h3>
@@ -122,51 +193,54 @@
 
                     <div class="space-y-1">
                         <div class="text-5xl font-black tracking-tight leading-tight">
-                            {{ $winner['participant']->participant_name }}
+                            {{ \App\Utils\MaskHelper::name($winner['participant']->participant_name) }}
                         </div>
                         <div class="flex flex-wrap justify-center md:justify-start gap-4 mt-4">
                             <div class="bg-black/20 px-3 py-1 rounded-lg backdrop-blur-sm border border-white/10">
                                 <span class="text-white/60 text-xs font-bold uppercase block">CIF Number</span>
-                                <span class="font-mono text-lg">{{ $winner['participant']->participant_cif }}</span>
+                                <span
+                                    class="font-mono text-lg">{{ \App\Utils\MaskHelper::mask($winner['participant']->participant_cif) }}</span>
                             </div>
                             <div class="bg-black/20 px-3 py-1 rounded-lg backdrop-blur-sm border border-white/10">
                                 <span class="text-white/60 text-xs font-bold uppercase block">Account</span>
                                 <span
-                                    class="font-mono text-lg">{{ $winner['participant']->participant_account_number }}</span>
+                                    class="font-mono text-lg">{{ \App\Utils\MaskHelper::mask($winner['participant']->participant_account_number) }}</span>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="flex flex-col gap-3 min-w-[220px]">
-                    <x-filament::button wire:click="confirmWinner" color="white" size="xl"
-                        class="group relative overflow-hidden font-black text-primary-700 hover:text-primary-800 shadow-xl transition-all hover:-translate-y-1">
-                        <span class="relative z-10 flex items-center justify-center gap-2">
-                            <x-heroicon-s-check-circle class="w-6 h-6" />
-                            CONFIRM WINNER
-                        </span>
-                        <div class="absolute inset-0 bg-yellow-300 opacity-0 group-hover:opacity-10 transition-opacity">
+                @if ($isPreview && $enableRedraw)
+                    <div class="flex flex-col gap-3 min-w-[220px]">
+                        <x-filament::button wire:click="confirmWinner" color="white" size="xl"
+                            class="group relative overflow-hidden font-black text-primary-700 hover:text-primary-800 shadow-xl transition-all hover:-translate-y-1">
+                            <span class="relative z-10 flex items-center justify-center gap-2">
+                                <x-heroicon-s-check-circle class="w-6 h-6" />
+                                CONFIRM WINNER
+                            </span>
+                            <div class="absolute inset-0 bg-yellow-300 opacity-0 group-hover:opacity-10 transition-opacity">
+                            </div>
+                        </x-filament::button>
+
+                        <div class="grid grid-cols-2 gap-2 mt-2">
+                            <x-filament::button wire:click="draw" color="white" variant="link"
+                                class="text-white bg-white/10 hover:bg-white/20 font-bold border border-white/20 py-2">
+                                <span class="flex items-center gap-1.5 justify-center">
+                                    <x-heroicon-o-arrow-path class="w-4 h-4" />
+                                    RE-DRAW
+                                </span>
+                            </x-filament::button>
+
+                            <x-filament::button wire:click="clearWinner" color="white" variant="link"
+                                class="text-white bg-white/10 hover:bg-white/20 font-bold border border-white/20 py-2">
+                                <span class="flex items-center gap-1.5 justify-center">
+                                    <x-heroicon-o-x-mark class="w-4 h-4" />
+                                    CANCEL
+                                </span>
+                            </x-filament::button>
                         </div>
-                    </x-filament::button>
-
-                    <div class="grid grid-cols-2 gap-2 mt-2">
-                        <x-filament::button wire:click="draw" color="white" variant="link"
-                            class="text-white bg-white/10 hover:bg-white/20 font-bold border border-white/20 py-2">
-                            <span class="flex items-center gap-1.5 justify-center">
-                                <x-heroicon-o-arrow-path class="w-4 h-4" />
-                                RE-DRAW
-                            </span>
-                        </x-filament::button>
-
-                        <x-filament::button wire:click="clearWinner" color="white" variant="link"
-                            class="text-white bg-white/10 hover:bg-white/20 font-bold border border-white/20 py-2">
-                            <span class="flex items-center gap-1.5 justify-center">
-                                <x-heroicon-o-x-mark class="w-4 h-4" />
-                                CANCEL
-                            </span>
-                        </x-filament::button>
                     </div>
-                </div>
+                @endif
             </div>
 
             <!-- Decoration Icons -->

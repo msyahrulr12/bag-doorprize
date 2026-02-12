@@ -18,6 +18,8 @@ class AccountDocument extends Model
         'is_merged',
         'status',
         'metadata',
+        'document_type',
+        'file_description'
     ];
 
     protected $casts = [
@@ -26,9 +28,20 @@ class AccountDocument extends Model
         'metadata' => 'json',
     ];
 
-    public const TYPE_ESTATEMENT = 'e-statement';
+    public const STATUS_PENDING = 'PENDING';
+    public const STATUS_ACTIVE = 'ACTIVE';
+    public const STATUS_INACTIVE = 'INACTIVE';
+    public const STATUS = [
+        self::STATUS_PENDING => 'PENDING',
+        self::STATUS_ACTIVE => 'ACTIVE',
+        self::STATUS_INACTIVE => 'INACTIVE',
+    ];
+
+    public const TYPE_ESTATEMENT = 'E-STATEMENT';
+    public const TYPE_FULL_ESTATEMENT = 'FULL E-STATEMENT';
     public const TYPE = [
-        self::TYPE_ESTATEMENT,
+        self::TYPE_ESTATEMENT => 'E-STATEMENT',
+        self::TYPE_FULL_ESTATEMENT => 'FULL E-STATEMENT',
     ];
 
     public function customer()

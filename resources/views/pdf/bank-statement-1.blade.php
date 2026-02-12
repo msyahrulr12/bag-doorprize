@@ -1,3 +1,8 @@
+@php
+    $type = pathinfo(public_path('images/background-image.png'), PATHINFO_EXTENSION);
+    $data = file_get_contents(public_path('images/background-image.png'));
+@endphp
+
 <!DOCTYPE html>
 <html>
 
@@ -11,9 +16,13 @@
 
         body {
             font-family: Arial, sans-serif;
-            color: #000;
             margin: 0;
-            padding: 30px;
+            /* padding: 30px; */
+            padding: 40px 50px;
+            background-image: url({{ 'data:image/' . $type . ';base64,' . base64_encode($data) }});
+            background-size: 400px;
+            background-repeat: no-repeat;
+            background-position: center;
         }
 
         .container {
@@ -27,12 +36,13 @@
         }
 
         .logo-section-img {
-            width: 130px;
+            width: 120px;
             height: 60px;
             margin-right: 15px;
         }
 
         .bagi-hoki-logo-img {
+            width: 160px;
             height: 120px;
         }
 
@@ -74,19 +84,21 @@
         }
 
         .coupon-table thead th {
-            background-color: #2d7a8e;
+            /* background-color: #2d7a8e; */
+            background-color: #FBBA38;
             color: #ffffff;
             padding: 12px 5px;
-            font-size: 12px;
+            font-size: 8.5px;
             text-align: center;
-            border: 1px solid #2d7a8e;
+            border: 1px solid #FBBA38;
         }
 
         .coupon-table tbody td {
             padding: 10px 5px;
             text-align: center;
-            border: 1px solid #eeeeee;
-            font-size: 9.5px;
+            /* border: 1px solid #eeeeee; */
+            border: transparent;
+            font-size: 8px;
         }
 
         .bg-gray {
@@ -95,7 +107,7 @@
 
         /* Success Message */
         .success-message {
-            background-color: #2d7a8e;
+            background-color: #FBBA38;
             color: #ffffff;
             padding: 15px;
             border-radius: 8px;
@@ -196,9 +208,9 @@
             <tr>
                 <td style=" width: 60%; vertical-align: middle;">
                     <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/agi-bank-logo.png'))) }}"
-                        class="logo-section-img" style="vertical-align: middle;">
+                        class="logo-section-img" style="vertical-align: middle;" height="auto">
                     <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/logo-agi.png'))) }}"
-                        class="logo-section-img" style="vertical-align: middle;">
+                        class="logo-section-img" style="vertical-align: middle;" height="auto">
                 </td>
                 <td style="width: 40%; text-align: right;">
                     <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/logo-program.png'))) }}"
@@ -222,7 +234,8 @@
 
         <!-- Main Title -->
         <div class="main-title">PEROLEHAN KUPON UNDIAN BAGI HOKI</div>
-        <div class="subtitle">Terus tingkatkan saldo bulanan Anda & menangkan hadiah hingga miliaran rupiah</div>
+        <div class="subtitle">Tingkatkan saldo rata-rata bulanan Anda. Menangkan Tabungan Rp1 miliar & ribuan hadiah
+            lainnya</div>
 
         <!-- Coupon Table -->
         <table class="coupon-table">
@@ -238,26 +251,39 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach($coupons ?? [] as $index => $coupon)
-                    <tr class="{{ $index % 2 != 0 ? 'bg-gray' : '' }}">
-                        <td>{{ $index + 1 }}</td>
-                        <td>{{ $coupon['periode'] }}</td>
-                        <td>{{ $coupon['penambahan'] }}</td>
-                        <td>{{ $coupon['pengurangan'] }}</td>
-                        <td>{{ $coupon['nomor'] }}</td>
-                        <td>{{ $coupon['saldo'] }}</td>
-                        <td style="text-align: left;">{{ $coupon['keterangan'] }}</td>
+                @if ($coupons)
+                    @foreach($coupons ?? [] as $index => $coupon)
+                        <tr>
+                            <td>{{ $index + 1 }}</td>
+                            <td>{{ $coupon['periode'] }}</td>
+                            <td>{{ $coupon['penambahan'] }}</td>
+                            <td>{{ $coupon['pengurangan'] }}</td>
+                            <td>{!! $coupon['nomor'] !!}</td>
+                            <td>{{ $coupon['saldo'] }}</td>
+                            <td style="text-align: left;">{!! $coupon['keterangan'] !!}</td>
+                        </tr>
+                    @endforeach
+                    <tr>
+                        <td colspan="4"></td>
+                        <td style="text-align: center;">
+                            <strong>Total</strong>
+                        </td>
+                        <td>
+                            <strong>{{ $totalPoints ?? 0 }}</strong>
+                        </td>
+                        <td style="text-align: left;">
+                            <strong>{!! $totalPointDescriptions ?? 'N/A' !!}</strong>
+                        </td>
                     </tr>
-                @endforeach
+                @endif
             </tbody>
         </table>
 
         <!-- Success Message -->
         @if ($showSuccessMessage)
-            <div class="success-message">
+            <div class="success-message" style="text-align: center;">
                 <strong>Selamat! Kupon undian Anda periode {{ ($monthName ?? 'N/A') . ' ' . ($year ?? 'N/A') }} telah
                     tercatat atas nama Anda.</strong><br>
-                Proses pengundian akan dilaksanakan sesuai jadwal. Semoga beruntung!
             </div>
         @endif
 
@@ -265,7 +291,7 @@
         <table class="footer-table" style="margin-bottom: 20px;">
             <tr>
                 <td style="width: 50%; vertical-align: bottom;">
-                    <table>
+                    <!-- <table>
                         <tr>
                             <td>
                                 <div class="qr-box">
@@ -274,11 +300,11 @@
                                 </div>
                             </td>
                             <td style="padding-left: 10px; font-size: 12px;">
-                                <strong>SCAN DISINI</strong><br>
+                                <strong>SCAN DI SINI</strong><br>
                                 untuk informasi<br>lebih lanjut
                             </td>
                         </tr>
-                    </table>
+                    </table> -->
                 </td>
                 <td style="width: 30%; text-align: right; vertical-align: bottom;">
                     <div class="hadiah-box">
@@ -288,51 +314,16 @@
                 </td>
             </tr>
         </table>
-
-        <!-- App Links -->
-        <!-- <div class="app-links">
-        <span>download agi di</span>
-        <img src="{{ public_path('images/google-play.png') }}">
-        <img src="{{ public_path('images/app-store.png') }}">
-        <span>www.arthagraha.com</span>
-    </div> -->
         <div style="width: 100%; background-color: #2d7a8e; bottom: 0; left:0; position: fixed;">
-            <table width="100%">
+            <table width="90%" style="padding: 6px 8px; margin: 0 auto;">
                 <tr>
-                    <td style="padding: 20px 0; width: 55%;">
-                        <div class="app-links">
-                            <img
-                                src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/download-info-agi.png'))) }}">
-                        </div>
-                    </td>
-                    <td style="width: 45%;">
-                        <div class="contact-container">
-                            <div class="contact-box">
-                                <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/graha-info.png'))) }}"
-                                    width="100%" style="margin-right: 30px;">
-                            </div>
-                        </div>
+                    <td>
+                        <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/footer.png'))) }}"
+                            width="100%">
                     </td>
                 </tr>
             </table>
         </div>
-
-        <!-- Bank Info -->
-        <!-- <div class="bank-info">
-        Bank Artha Graha International berizin dan diawasi oleh Otoritas Jasa Keuangan dan merupakan peserta
-        penjaminan LPS
-    </div> -->
-
-        <!-- Contact Info -->
-        <!-- <div class="contact-container">
-        <div class="contact-box">
-            <div>GrahaChat 0889-3242-1232</div>
-            <div>GrahaCall 0811-191-888-80</div>
-            <div>0800-191-888-0</div>
-            <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/graha-info.png'))) }}"
-                width="100%">
-        </div>
-    </div> -->
     </div>
 </body>
 

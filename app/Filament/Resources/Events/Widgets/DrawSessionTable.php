@@ -3,9 +3,11 @@
 namespace App\Filament\Resources\Events\Widgets;
 
 use App\Models\DrawSession;
+use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
+use Filament\Actions\ExportAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
@@ -19,13 +21,20 @@ use Illuminate\Database\Eloquent\Model;
 class DrawSessionTable extends TableWidget
 {
     public ?Model $record = null;
+    public ?int $event_id = null;
 
     public function table(Table $table): Table
     {
         return $table
-            ->query(
-                DrawSession::query()->where('event_id', $this->record->id)->orderBy('started_at', 'asc')
-            )
+            ->query(function () {
+                $query = DrawSession::query()->orderBy('started_at', 'asc');
+                if ($this->record) {
+                    $query->where('event_id', $this->record->id);
+                } elseif ($this->event_id) {
+                    $query->where('event_id', $this->event_id);
+                }
+                return $query;
+            })
             ->columns([
                 TextColumn::make('name')
                     ->searchable()
@@ -54,10 +63,28 @@ class DrawSessionTable extends TableWidget
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->headerActions([
+                ExportAction::make()
+                    ->exporter(\App\Filament\Exports\DrawSessionExporter::class)
+                    ->label('Export CSV/Excel'),
+                Action::make('export_pdf')
+                    ->label('Export PDF')
+                    ->color('danger')
+                    ->icon('heroicon-o-document-text')
+                    ->action(function () {
+                        $query = DrawSession::query()->orderBy('started_at', 'asc');
+                        if ($this->record) {
+                            $query->where('event_id', $this->record->id);
+                        } elseif ($this->event_id) {
+                            $query->where('event_id', $this->event_id);
+                        }
+                        $records = $query->get();
+                        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.draw-sessions', ['records' => $records]);
+                        return response()->streamDownload(fn() => print ($pdf->output()), 'draw-sessions.pdf');
+                    }),
                 CreateAction::make()
                     ->form([
                         Hidden::make('event_id')
-                            ->default(fn() => $this->record->id),
+                            ->default(fn() => $this->record?->id),
                         TextInput::make('name')
                             ->required()
                             ->maxLength(255),

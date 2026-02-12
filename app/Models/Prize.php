@@ -27,11 +27,11 @@ class Prize extends Model implements Auditable
     public const TIER_COMMON = 'COMMON';
 
     public const PRIZE_TIER = [
-        self::TIER_GRAND_PRIZE => self::TIER_GRAND_PRIZE,
-        self::TIER_1 => self::TIER_1,
-        self::TIER_2 => self::TIER_2,
-        self::TIER_3 => self::TIER_3,
-        self::TIER_COMMON => self::TIER_COMMON,
+        self::TIER_GRAND_PRIZE => 'Grand Prize',
+        self::TIER_1 => 'Tier 1',
+        self::TIER_2 => 'Tier 2',
+        self::TIER_3 => 'Tier 3',
+        self::TIER_COMMON => 'Common',
     ];
 
     public function events()

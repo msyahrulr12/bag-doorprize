@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\Customers\Widgets;
 
 use App\Models\PointHistory;
+use Filament\Actions\Action;
+use Filament\Actions\ExportAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -54,7 +56,18 @@ class PointHistoryTable extends TableWidget
                 //
             ])
             ->headerActions([
-                //
+                ExportAction::make()
+                    ->exporter(\App\Filament\Exports\PointHistoryExporter::class)
+                    ->label('Export CSV/Excel'),
+                Action::make('export_pdf')
+                    ->label('Export PDF')
+                    ->color('danger')
+                    ->icon('heroicon-o-document-text')
+                    ->action(function () {
+                        $records = PointHistory::whereIn('account_id', $this->account_ids)->get();
+                        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.point-history', ['records' => $records]);
+                        return response()->streamDownload(fn() => print ($pdf->output()), 'point-history.pdf');
+                    }),
             ])
             ->recordActions([
                 //

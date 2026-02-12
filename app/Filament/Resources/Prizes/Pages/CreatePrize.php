@@ -7,6 +7,7 @@ use Filament\Resources\Pages\CreateRecord;
 
 class CreatePrize extends CreateRecord
 {
+    use \App\Traits\InteractsWithApprovals;
     protected static string $resource = PrizeResource::class;
 
     protected function getRedirectUrl(): string

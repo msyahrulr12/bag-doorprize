@@ -60,6 +60,38 @@ return [
             'report' => false,
         ],
 
+        'core_t24_sftp' => [
+            'driver' => 'sftp',
+            'host' => env('CORE_T24_SFTP_HOST'),
+
+            // Settings for basic authentication...
+            'username' => env('CORE_T24_SFTP_USERNAME'),
+            'password' => env('CORE_T24_SFTP_PASSWORD'),
+
+            // Settings for SSH key-based authentication with encryption password...
+            // 'privateKey' => env('CORE_T24_SFTP_PRIVATE_KEY'),
+            // 'passphrase' => env('CORE_T24_SFTP_PASSPHRASE'),
+
+            // Settings for file / directory permissions...
+            'visibility' => 'private', // `private` = 0600, `public` = 0644
+            'directory_visibility' => 'private', // `private` = 0700, `public` = 0755
+
+            // Optional SFTP Settings...
+            // 'hostFingerprint' => env('SFTP_HOST_FINGERPRINT'),
+            // 'maxTries' => 4,
+            // 'passphrase' => env('SFTP_PASSPHRASE'),
+            'port' => (int) env('CORE_T24_SFTP_PORT', 22),
+            // 'root' => env('SFTP_ROOT', ''),
+            // 'timeout' => 45,
+            // 'useAgent' => true,
+        ],
+
+        'tmp' => [
+            'driver' => 'local',
+            'root' => sys_get_temp_dir(), // Uses the system's temporary directory (e.g., /tmp)
+            'visibility' => 'private',
+        ],
+
     ],
 
     /*

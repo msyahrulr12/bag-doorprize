@@ -2,11 +2,15 @@
 
 namespace App\Filament\Resources\Customers\Schemas;
 
+use App\Models\Branch;
+use App\Models\Customer;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Schemas\Schema;
 use Filament\Tables\Filters\SelectFilter;
+use Illuminate\Database\Eloquent\Builder;
 
 class CustomerForm
 {
@@ -14,10 +18,21 @@ class CustomerForm
     {
         return $schema
             ->components([
-                Select::make('branch')
-                    ->relationship('branch', 'branch_name')
+                Select::make('branch_id')
+                    ->label('Branch')
+                    ->relationship(
+                        name: 'branch',
+                        titleAttribute: 'branch_name',
+                        modifyQueryUsing: fn(Builder $query) => $query
+                            ->where('status', Branch::STATUS_ACTIVE)
+                            ->when(
+                                !auth()->user()->hasRole('super_admin'),
+                                fn($q) => $q->whereIn('id', auth()->user()->branches->pluck('id'))
+                            )
+                    )
                     ->searchable()
-                    ->preload(),
+                    ->preload()
+                    ->required(),
                 TextInput::make('name')
                     ->required(),
                 TextInput::make('cif')
@@ -41,6 +56,11 @@ class CustomerForm
                     ->required()
                     ->numeric()
                     ->default(0),
+                DatePicker::make('date_of_birth')
+                    ->required(),
+                Select::make('status')
+                    ->required()
+                    ->options(Customer::STATUS),
             ]);
     }
 }

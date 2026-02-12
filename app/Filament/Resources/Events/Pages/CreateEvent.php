@@ -7,5 +7,7 @@ use Filament\Resources\Pages\CreateRecord;
 
 class CreateEvent extends CreateRecord
 {
+    use \App\Traits\InteractsWithApprovals;
+
     protected static string $resource = EventResource::class;
 }

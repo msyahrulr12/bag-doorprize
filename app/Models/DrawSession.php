@@ -20,9 +20,12 @@ class DrawSession extends Model implements Auditable
         'description',
     ];
 
+    public const STATUS_ACTIVE = 'ACTIVE';
+    public const STATUS_INACTIVE = 'INACTIVE';
+
     public const DRAW_SESSION_STATUS = [
-        'ACTIVE',
-        'NONACTIVE'
+        self::STATUS_ACTIVE => 'ACTIVE',
+        self::STATUS_INACTIVE => 'INACTIVE'
     ];
 
     public function event()

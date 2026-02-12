@@ -32,9 +32,31 @@ class LotteryTicket extends Model implements Auditable
         self::STATUS_COMPLETED,
     ];
 
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::created(function ($ticket) {
+            if ($ticket->event_id) {
+                $ticket->events()->syncWithoutDetaching([$ticket->event_id]);
+            }
+        });
+
+        static::updated(function ($ticket) {
+            if ($ticket->isDirty('event_id') && $ticket->event_id) {
+                $ticket->events()->syncWithoutDetaching([$ticket->event_id]);
+            }
+        });
+    }
+
     public function event()
     {
         return $this->belongsTo(Event::class);
+    }
+
+    public function events()
+    {
+        return $this->belongsToMany(Event::class, 'event_lottery_ticket');
     }
 
     public function participant()
