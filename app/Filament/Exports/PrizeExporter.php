@@ -15,8 +15,7 @@ class PrizeExporter extends Exporter
     public static function getColumns(): array
     {
         return [
-            ExportColumn::make('id')
-                ->label('ID'),
+            ExportColumn::make('id'),
             ExportColumn::make('prize_code'),
             ExportColumn::make('prize_name'),
             ExportColumn::make('prize_image'),
@@ -26,6 +25,7 @@ class PrizeExporter extends Exporter
             ExportColumn::make('created_at'),
             ExportColumn::make('updated_at'),
             ExportColumn::make('deleted_at'),
+            ExportColumn::make('status'),
         ];
     }
 

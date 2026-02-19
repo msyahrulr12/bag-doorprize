@@ -8,6 +8,7 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ExportAction;
 use Filament\Actions\ForceDeleteBulkAction;
+use Filament\Actions\ImportAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TrashedFilter;
@@ -62,7 +63,7 @@ class DrawSessionsTable
                 ]),
             ])
             ->headerActions([
-                ExportAction::make(DrawSessionExporter::class)
+                ExportAction::make(DrawSessionExporter::class),
             ]);
     }
 }

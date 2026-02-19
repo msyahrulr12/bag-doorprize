@@ -45,7 +45,7 @@ class AppServiceProvider extends ServiceProvider
                     $livewire = $action->getTable()->getLivewire();
                 }
 
-                $resource = ($livewire && property_exists($livewire, 'resource')) ? $livewire->resource : null;
+                $resource = ($livewire && method_exists($livewire, 'getResource')) ? $livewire->getResource() : null;
 
                 if (!$resource) {
                     return;

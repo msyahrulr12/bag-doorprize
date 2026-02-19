@@ -15,24 +15,18 @@ class ParticipantExporter extends Exporter
     public static function getColumns(): array
     {
         return [
-            ExportColumn::make('id')
-                ->label('ID'),
-            ExportColumn::make('event.event_name')
-                ->label('Event'),
-            ExportColumn::make('participant_name')
-                ->label('Name'),
-            ExportColumn::make('participant_cif')
-                ->label('CIF'),
-            ExportColumn::make('participant_account_number')
-                ->label('Account'),
-            ExportColumn::make('participant_email')
-                ->label('Email'),
-            ExportColumn::make('participant_phone_number')
-                ->label('Phone'),
-            ExportColumn::make('total_points_snapshot')
-                ->label('Points Snapshot'),
+            ExportColumn::make('id'),
+            ExportColumn::make('event.event_name'),
+            ExportColumn::make('participant_name'),
+            ExportColumn::make('participant_cif'),
+            ExportColumn::make('participant_account_number'),
+            ExportColumn::make('participant_email'),
+            ExportColumn::make('participant_phone_number'),
+            ExportColumn::make('total_points_snapshot'),
             ExportColumn::make('status'),
             ExportColumn::make('created_at'),
+            ExportColumn::make('updated_at'),
+            ExportColumn::make('deleted_at'),
         ];
     }
 

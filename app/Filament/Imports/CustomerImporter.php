@@ -41,6 +41,22 @@ class CustomerImporter extends Importer
                 ->requiredMapping()
                 ->numeric()
                 ->rules(['required', 'integer']),
+            ImportColumn::make('status')
+                ->rules(['max:255'])
+                ->castStateUsing(function ($state) {
+                    return $state == '1' || strtoupper($state) == 'ACTIVE' ? Customer::STATUS_ACTIVE : Customer::STATUS_INACTIVE;
+                }),
+            ImportColumn::make('date_of_birth')
+                ->rules(['nullable', 'date'])
+                ->castStateUsing(function ($state) {
+                    if (empty($state))
+                        return null;
+                    try {
+                        return \Carbon\Carbon::parse($state)->format('Y-m-d');
+                    } catch (\Exception $e) {
+                        return null;
+                    }
+                }),
         ];
     }
 

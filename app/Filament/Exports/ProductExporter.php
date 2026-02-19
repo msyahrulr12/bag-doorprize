@@ -15,8 +15,7 @@ class ProductExporter extends Exporter
     public static function getColumns(): array
     {
         return [
-            ExportColumn::make('id')
-                ->label('ID'),
+            ExportColumn::make('id'),
             ExportColumn::make('sk_produk'),
             ExportColumn::make('kode_group_produk'),
             ExportColumn::make('group_produk'),

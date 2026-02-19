@@ -15,8 +15,7 @@ class DrawSessionExporter extends Exporter
     public static function getColumns(): array
     {
         return [
-            ExportColumn::make('id')
-                ->label('ID'),
+            ExportColumn::make('id'),
             ExportColumn::make('event_id'),
             ExportColumn::make('name'),
             ExportColumn::make('started_at'),

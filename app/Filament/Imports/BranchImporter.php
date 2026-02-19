@@ -86,6 +86,16 @@ class BranchImporter extends Importer
                 }),
             ImportColumn::make('new_regional_head')
                 ->rules(['max:255']),
+            ImportColumn::make('status')
+                ->rules(['max:255'])
+                ->castStateUsing(function ($state) {
+                    return $state == '1' || strtoupper($state) == 'ACTIVE' ? Branch::STATUS_ACTIVE : Branch::STATUS_INACTIVE;
+                }),
+            ImportColumn::make('region')
+                ->rules(['max:255'])
+                ->castStateUsing(function ($state) {
+                    return in_array($state, Branch::REGIONS) ? $state : null;
+                }),
         ];
     }
 

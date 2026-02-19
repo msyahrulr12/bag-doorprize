@@ -15,12 +15,14 @@ class BranchExporter extends Exporter
     public static function getColumns(): array
     {
         return [
-            ExportColumn::make('id')
-                ->label('ID'),
+            ExportColumn::make('id'),
             ExportColumn::make('branch_code'),
             ExportColumn::make('branch_name'),
             ExportColumn::make('address'),
             ExportColumn::make('description'),
+            ExportColumn::make('created_at'),
+            ExportColumn::make('updated_at'),
+            ExportColumn::make('deleted_at'),
             ExportColumn::make('sk_branch'),
             ExportColumn::make('sandi_pelapor_kantor_lbu'),
             ExportColumn::make('nama_sandi_pelapor'),
@@ -35,9 +37,8 @@ class BranchExporter extends Exporter
             ExportColumn::make('update_regional1'),
             ExportColumn::make('update_date1'),
             ExportColumn::make('new_regional_head'),
-            ExportColumn::make('created_at'),
-            ExportColumn::make('updated_at'),
-            ExportColumn::make('deleted_at'),
+            ExportColumn::make('status'),
+            ExportColumn::make('region'),
         ];
     }
 

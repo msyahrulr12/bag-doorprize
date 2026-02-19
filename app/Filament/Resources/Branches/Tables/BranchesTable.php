@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Branches\Tables;
 use App\Filament\Exports\BranchExporter;
 use App\Filament\Imports\BranchImporter;
 use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ExportAction;
@@ -90,8 +91,9 @@ class BranchesTable
                 TrashedFilter::make(),
             ])
             ->recordActions([
-                EditAction::make(),
                 ViewAction::make(),
+                EditAction::make(),
+                DeleteAction::make(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

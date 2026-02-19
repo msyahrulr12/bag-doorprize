@@ -15,8 +15,7 @@ class EventExporter extends Exporter
     public static function getColumns(): array
     {
         return [
-            ExportColumn::make('id')
-                ->label('ID'),
+            ExportColumn::make('id'),
             ExportColumn::make('event_code'),
             ExportColumn::make('event_name'),
             ExportColumn::make('event_image'),
@@ -27,6 +26,7 @@ class EventExporter extends Exporter
             ExportColumn::make('created_at'),
             ExportColumn::make('updated_at'),
             ExportColumn::make('deleted_at'),
+            ExportColumn::make('last_ticket_number'),
         ];
     }
 

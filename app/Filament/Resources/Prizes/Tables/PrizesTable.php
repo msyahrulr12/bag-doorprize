@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Prizes\Tables;
 
 use App\Filament\Exports\PrizeExporter;
 use App\Filament\Imports\EventImporter;
+use App\Filament\Imports\PrizeImporter;
 use App\Models\Prize;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -62,7 +63,7 @@ class PrizesTable
             ])
             ->headerActions([
                 ExportAction::make()->exporter(PrizeExporter::class),
-                ImportAction::make()->importer(EventImporter::class),
+                ImportAction::make()->importer(PrizeImporter::class),
             ]);
     }
 }

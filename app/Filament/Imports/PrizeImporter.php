@@ -30,6 +30,12 @@ class PrizeImporter extends Importer
                 ->numeric()
                 ->rules(['required', 'integer']),
             ImportColumn::make('description'),
+            ImportColumn::make('status')
+                ->requiredMapping()
+                ->rules(['required', 'max:255'])
+                ->castStateUsing(function ($state) {
+                    return $state == '1' || strtoupper($state) == 'ACTIVE' ? Prize::STATUS_ACTIVE : Prize::STATUS_INACTIVE;
+                }),
         ];
     }
 

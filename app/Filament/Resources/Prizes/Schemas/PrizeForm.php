@@ -33,10 +33,13 @@ class PrizeForm
                 TextInput::make('value')
                     ->label('Nilai Hadiah (Rp)')
                     ->required()
-                    ->currencyMask(thousandSeparator: '.',decimalSeparator: ',',precision: 2),
+                    ->currencyMask(thousandSeparator: '.', decimalSeparator: ',', precision: 2),
                 Textarea::make('description')
                     ->columnSpanFull()
                     ->rows(10),
+                Select::make('status')
+                    ->required()
+                    ->options(Prize::STATUS),
             ]);
     }
 }

@@ -15,10 +15,9 @@ class PointHistoryExporter extends Exporter
     public static function getColumns(): array
     {
         return [
-            ExportColumn::make('id')
-                ->label('ID'),
-            ExportColumn::make('account.account_number')
-                ->label('Account Number'),
+            ExportColumn::make('id'),
+            ExportColumn::make('account.account_number'),
+            ExportColumn::make('account.participant.participant_name'),
             ExportColumn::make('amount'),
             ExportColumn::make('month'),
             ExportColumn::make('year'),
@@ -26,6 +25,8 @@ class PointHistoryExporter extends Exporter
             ExportColumn::make('type'),
             ExportColumn::make('description'),
             ExportColumn::make('created_at'),
+            ExportColumn::make('updated_at'),
+            ExportColumn::make('deleted_at'),
         ];
     }
 

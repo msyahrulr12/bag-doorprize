@@ -15,8 +15,7 @@ class CustomerExporter extends Exporter
     public static function getColumns(): array
     {
         return [
-            ExportColumn::make('id')
-                ->label('ID'),
+            ExportColumn::make('id'),
             ExportColumn::make('branch_id'),
             ExportColumn::make('name'),
             ExportColumn::make('cif'),
@@ -29,6 +28,8 @@ class CustomerExporter extends Exporter
             ExportColumn::make('created_at'),
             ExportColumn::make('updated_at'),
             ExportColumn::make('deleted_at'),
+            ExportColumn::make('status'),
+            ExportColumn::make('date_of_birth'),
         ];
     }
 

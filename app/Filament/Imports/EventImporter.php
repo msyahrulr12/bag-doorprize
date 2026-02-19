@@ -30,6 +30,7 @@ class EventImporter extends Importer
             ImportColumn::make('event_ended_at')
                 ->rules(['datetime']),
             ImportColumn::make('description'),
+            ImportColumn::make('last_ticket_number'),
         ];
     }
 

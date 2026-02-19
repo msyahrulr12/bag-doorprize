@@ -20,6 +20,13 @@ class Prize extends Model implements Auditable
         'status',
     ];
 
+    public const STATUS_ACTIVE = 'ACTIVE';
+    public const STATUS_INACTIVE = 'INACTIVE';
+    public const STATUS = [
+        self::STATUS_ACTIVE => 'ACTIVE',
+        self::STATUS_INACTIVE => 'INACTIVE',
+    ];
+
     public const TIER_GRAND_PRIZE = 'GRAND PRIZE';
     public const TIER_1 = 'TIER 1';
     public const TIER_2 = 'TIER 2';

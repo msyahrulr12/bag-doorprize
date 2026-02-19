@@ -15,22 +15,18 @@ class LotteryTicketExporter extends Exporter
     public static function getColumns(): array
     {
         return [
-            ExportColumn::make('id')
-                ->label('ID'),
-            ExportColumn::make('event.event_name')
-                ->label('Event'),
-            ExportColumn::make('participant.participant_name')
-                ->label('Participant'),
-            ExportColumn::make('total_points')
-                ->label('Points'),
-            ExportColumn::make('range_start')
-                ->label('Start Range'),
-            ExportColumn::make('range_end')
-                ->label('End Range'),
+            ExportColumn::make('id'),
+            ExportColumn::make('event.event_name'),
+            ExportColumn::make('participant.participant_name'),
+            ExportColumn::make('total_points'),
+            ExportColumn::make('range_start'),
+            ExportColumn::make('range_end'),
             ExportColumn::make('status'),
             ExportColumn::make('month'),
             ExportColumn::make('year'),
             ExportColumn::make('created_at'),
+            ExportColumn::make('updated_at'),
+            ExportColumn::make('deleted_at'),
         ];
     }
 
