@@ -38,6 +38,12 @@ class StatsOverviewWidget extends BaseWidget
                 ->description('Winners for active event')
                 ->descriptionIcon('heroicon-m-trophy')
                 ->color('success'),
+
+            Stat::make('Failed Uploads', \App\Models\FailedUpload::where('status', 'failed')->count())
+                ->description('Pending file uploads')
+                ->descriptionIcon('heroicon-m-x-circle')
+                ->color(fn() => \App\Models\FailedUpload::where('status', 'failed')->exists() ? 'danger' : 'success')
+                ->url(\Modules\LogManagement\Filament\Resources\FailedUploads\FailedUploadResource::getUrl()),
         ];
     }
 }

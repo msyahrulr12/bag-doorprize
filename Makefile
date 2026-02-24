@@ -10,15 +10,18 @@ OCTANE_WORKERS?=4
 
 # Queue Configuration
 QUEUE_CONNECTION?=database
-QUEUE_NAMES?=tickets,imports,draws
+QUEUE_NAMES?=tickets,imports,draws,reports,default
 
-.PHONY: help build package clean setup install deploy octane queue super-admin
+.PHONY: help build package clean setup install deploy octane queue super-admin create-user-view
 
 help:
 	@echo "Offline Deployment Tool"
 	@echo "-----------------------"
 	@echo "Usage (Local Preparation):"
+	@echo "  make build-assets  - Build assets for production (Vite)"
+	@echo "  make build         - Build application for production (dependencies & assets)"
 	@echo "  make package       - Build and package the application into a tarball"
+	@echo "  make restore-dev   - Restore development dependencies (Composer & NPM)"
 	@echo ""
 	@echo "Usage (Server Deployment):"
 	@echo "  make deploy        - Setup the application on the target server (requires .env)"
@@ -27,8 +30,9 @@ help:
 	@echo "Usage (Application Management):"
 	@echo "  make octane        - Start Laravel Octane server"
 	@echo "  make queue         - Start queue worker"
-	@echo "  make super-admin   - Create a super admin user"
-	@echo "  make optimize      - Optimize Laravel caches"
+	@echo "  make super-admin      - Create a super admin user"
+	@echo "  make create-user-view - Create PostgreSQL user for report_points_view"
+	@echo "  make optimize         - Optimize Laravel caches"
 	@echo "  make clear-cache   - Clear all Laravel caches"
 	@echo ""
 	@echo "Configuration (override with environment variables):"
@@ -43,13 +47,16 @@ help:
 
 # --- LOCAL PREPARATION ---
 
+build-assets:
+	@echo ">>> Building assets for production..."
+	rm -f public/hot
+	npm install
+	npm run build
+
 build:
 	@echo ">>> Building application for production..."
 	composer install --no-dev --optimize-autoloader
-	npm install
-	npm run build
-	@echo ">>> Cleaning up build dependencies..."
-	rm -rf node_modules
+	$(MAKE) build-assets
 	@echo ">>> Application build complete."
 
 package: build
@@ -67,10 +74,23 @@ package: build
 		--exclude='$(PACKAGE_NAME)' \
 		--exclude='node_modules' \
 		.
+	@echo ">>> Cleaning up production build dependencies..."
+	rm -rf node_modules
 	@echo ">>> Package created successfully: $(PACKAGE_NAME)"
 	@echo ">>> You can now move this file to your offline server."
+	@echo ">>> Note: node_modules has been removed. Run 'make restore-dev' to restore development environment."
 
-# --- SERVER DEPLOYMENT ---
+restore-dev:
+	@echo ">>> Restoring development dependencies..."
+	composer install
+	npm install
+	@echo ">>> Development environment restored."
+
+clean-assets:
+	@echo ">>> Cleaning assets..."
+	rm -rf public/build
+	rm -f public/hot
+	@echo ">>> Assets cleaned."
 
 deploy:
 	@echo ">>> Starting deployment process..."
@@ -84,6 +104,7 @@ deploy:
 	mkdir -p storage/framework/sessions
 	mkdir -p storage/framework/views
 	mkdir -p storage/app/public
+	mkdir -p storage/app/private
 	mkdir -p storage/logs
 	@echo ">>> Setting permissions..."
 	chmod +x frankenphp
@@ -115,6 +136,24 @@ queue:
 super-admin:
 	@echo ">>> Creating super admin user..."
 	php artisan shield:super-admin
+
+create-user-view:
+	@echo ">>> Creating PostgreSQL user with restricted access to report_points_view..."
+	@if [ ! -f .env ]; then echo "!!! ERROR: .env file not found. !!!"; exit 1; fi
+	@V_DB=$$(grep DB_DATABASE .env | cut -d'=' -f2 | sed -e 's/^"//' -e 's/"$$//'); \
+	V_USER=$$(grep DB_USERNAME .env | cut -d'=' -f2 | sed -e 's/^"//' -e 's/"$$//'); \
+	V_PASS=$$(grep DB_PASSWORD .env | cut -d'=' -f2 | sed -e 's/^"//' -e 's/"$$//'); \
+	V_HOST=$$(grep DB_HOST .env | cut -d'=' -f2 | sed -e 's/^"//' -e 's/"$$//'); \
+	V_PORT=$$(grep DB_PORT .env | cut -d'=' -f2 | sed -e 's/^"//' -e 's/"$$//'); \
+	read -p "Enter new username for view: " NEW_USER; \
+	read -sp "Enter password for view: " NEW_PASS; echo; \
+	echo ">>> Connecting to $$V_DB on $$V_HOST:$$V_PORT as $$V_USER..."; \
+	PGPASSWORD="$$V_PASS" psql -h "$$V_HOST" -p "$$V_PORT" -U "$$V_USER" -d "$$V_DB" \
+	-c "CREATE USER $$NEW_USER WITH PASSWORD '$$NEW_PASS';" \
+	-c "GRANT CONNECT ON DATABASE $$V_DB TO $$NEW_USER;" \
+	-c "GRANT USAGE ON SCHEMA public TO $$NEW_USER;" \
+	-c "GRANT SELECT ON report_points_view TO $$NEW_USER;"
+	@echo ">>> User '$$NEW_USER' created successfully with access to 'report_points_view'."
 
 optimize:
 	@echo ">>> Optimizing Laravel..."

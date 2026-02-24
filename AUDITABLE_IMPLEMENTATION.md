@@ -77,7 +77,7 @@ OCTANE_HOST?=0.0.0.0          # Configurable host
 OCTANE_PORT?=8000             # Configurable port
 OCTANE_WORKERS?=4             # Configurable worker count
 QUEUE_CONNECTION?=database    # Configurable queue connection
-QUEUE_NAMES?=tickets,imports,draws  # Configurable queue names
+QUEUE_NAMES?=tickets,imports,draws,reports,default  # Configurable queue names
 ```
 
 #### New Make Commands:

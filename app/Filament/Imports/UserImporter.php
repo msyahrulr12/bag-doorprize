@@ -7,6 +7,7 @@ use Filament\Actions\Imports\ImportColumn;
 use Filament\Actions\Imports\Importer;
 use Filament\Actions\Imports\Models\Import;
 use Illuminate\Support\Number;
+use \Illuminate\Support\Facades\Log;
 
 class UserImporter extends Importer
 {
@@ -23,8 +24,7 @@ class UserImporter extends Importer
                 ->rules(['required', 'max:255']),
             ImportColumn::make('password')
                 ->requiredMapping()
-                ->rules(['required', 'max:255'])
-                ->castStateUsing(fn(string $state): string => \Illuminate\Support\Facades\Hash::make($state)),
+                ->rules(['required', 'max:255']),
             ImportColumn::make('status')
                 ->requiredMapping()
                 ->rules(['required', 'max:255']),
@@ -33,6 +33,8 @@ class UserImporter extends Importer
 
     public function resolveRecord(): User
     {
+        Log::info('Resolving record for data:', $this->data);
+
         return User::firstOrNew([
             'email' => $this->data['email'],
         ]);

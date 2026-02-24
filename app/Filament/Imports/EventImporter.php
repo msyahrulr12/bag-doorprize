@@ -26,9 +26,9 @@ class EventImporter extends Importer
                 ->requiredMapping()
                 ->rules(['required', 'max:255']),
             ImportColumn::make('event_started_at')
-                ->rules(['datetime']),
+                ->rules(['required', 'date']),
             ImportColumn::make('event_ended_at')
-                ->rules(['datetime']),
+                ->rules(['required', 'date', 'after:event_started_at']),
             ImportColumn::make('description'),
             ImportColumn::make('last_ticket_number'),
         ];

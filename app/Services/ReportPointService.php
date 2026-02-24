@@ -69,7 +69,11 @@ class ReportPointService
             ->join('customers', 'customers.id', '=', 'accounts.customer_id')
             ->join('branches as account_branch', 'account_branch.id', '=', 'accounts.branch_id')
             ->join('branches as customer_branch', 'customer_branch.id', '=', 'customers.branch_id')
-            ->join('point_histories', 'point_histories.account_id', '=', 'accounts.id')
+            ->join('point_histories', function ($join) {
+                $join->on('point_histories.account_id', '=', 'accounts.id')
+                    ->on('point_histories.month', '=', 'lottery_tickets.month')
+                    ->on('point_histories.year', '=', 'lottery_tickets.year');
+            })
             ->select([
                 'lottery_tickets.id',
                 'lottery_tickets.total_points',
@@ -89,6 +93,7 @@ class ReportPointService
             ->where('lottery_tickets.year', $year)
             ->whereNull('lottery_tickets.deleted_at')
             ->whereNull('participants.deleted_at')
+            ->whereNull('point_histories.deleted_at')
             ->get();
 
         foreach ($lotteryTickets as $lotteryTicket) {

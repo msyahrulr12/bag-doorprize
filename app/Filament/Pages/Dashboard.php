@@ -18,6 +18,7 @@ class Dashboard extends BaseDashboard
     {
         return [
             StatsOverviewWidget::class,
+            \App\Filament\Widgets\LatestFailedUploadsWidget::class,
             PointsByMonthChart::class,
             WinnerPrizeDistributionChart::class,
             LatestWinnersWidget::class,

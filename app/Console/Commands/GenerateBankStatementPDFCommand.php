@@ -6,15 +6,11 @@ use App\Events\GenerateBankStatementProcessed;
 use App\Helper\DateHelper;
 use App\Helper\PdfHelper;
 use App\Models\AccountDocument;
-use App\Models\Event;
-use App\Models\Participant;
 use App\Models\Setting;
-use App\Models\Winner;
 use App\Models\Customer;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Log;
-use App\Models\LotteryTicket;
 use Storage;
 
 class GenerateBankStatementPDFCommand extends Command
@@ -46,228 +42,212 @@ class GenerateBankStatementPDFCommand extends Command
         $month = $currentDate->month;
         $year = $currentDate->year;
 
-        // Get all customers with accounts and active participants
-        $customers = Customer::with([
+        $monthName = DateHelper::MONTHS[$month];
+        $mergePdfBankStatement = (bool) Setting::where('key', 'merge_pdf_bank_statement')->first()->value ?? false;
+        $t24Path = env('CORE_T24_PATH_STATEMENT');
+
+        $query = Customer::whereHas('accounts');
+        Log::info("Total Customers to Process: " . $query->count());
+
+        $query->with([
+            'accounts',
             'accounts.branch',
-            // 'accounts.participants' => function ($query) {
-            //     $query->whereHas('event', fn($q) => $q->where('status', Event::STATUS_ACTIVE))
-            //         ->whereHas('lotteryTickets');
-            // },
             'accounts.participants',
             'accounts.participants.lotteryTickets',
             'accounts.pointHistories'
         ])
-            ->whereHas('accounts.participants', function ($query) {
-                $query->whereHas('event', fn($q) => $q->where('status', Event::STATUS_ACTIVE))
-                    ->whereHas('lotteryTickets');
-            })
-            ->get();
+            ->chunkById(50, function ($customers) use ($month, $year, $currentDate, $monthName, $mergePdfBankStatement, $t24Path) {
+                $chunkDocuments = [];
 
-        Log::info("Total Customers Processed: {$customers->count()}");
+                foreach ($customers as $customer) {
+                    $totalPoints = 0;
+                    $totalPointCustomers = [];
+                    $allCoupons = [];
 
-        $documents = [];
-        foreach ($customers ?? [] as $customer) {
-            $totalPoints = 0;
-            $totalPointCustomers = [];
-            $allCoupons = [];
+                    Log::info('Aggregating data for customer: ' . $customer->name . ' (CIF: ' . $customer->cif . ')');
 
-            Log::info('Aggregating data for customer: ' . $customer->name . ' (CIF: ' . $customer->cif . ')');
+                    $tempAggregated = [];
+                    foreach ($customer->accounts as $account) {
+                        $accNo = $account->account_number;
+                        if (!isset($totalPointCustomers[$accNo])) {
+                            $totalPointCustomers[$accNo] = [
+                                'penambahan' => 0,
+                                'pengurangan' => 0
+                            ];
+                        }
 
-            $tempAggregated = [];
-            // Phase 1: Aggregation across all accounts
-            foreach ($customer->accounts as $account) {
-                $accNo = $account->account_number;
-                if (!isset($totalPointCustomers[$accNo])) {
-                    $totalPointCustomers[$accNo] = [
-                        'penambahan' => 0,
-                        'pengurangan' => 0
-                    ];
-                }
+                        $ticketsByPeriod = [];
+                        foreach ($account->participants ?? [] as $participant) {
+                            foreach ($participant->lotteryTickets as $lt) {
+                                $ticketsByPeriod["{$lt->year}_{$lt->month}"] = $lt;
+                            }
+                        }
 
-                // Map tickets by month/year for this account
-                $ticketsByPeriod = [];
-                foreach ($account->participants as $participant) {
-                    foreach ($participant->lotteryTickets as $lt) {
-                        $ticketsByPeriod["{$lt->year}_{$lt->month}"] = $lt;
+                        foreach ($account->pointHistories ?? [] as $history) {
+                            $monthSortKey = sprintf("%04d_%02d", $history->year, $history->month);
+                            if (!isset($tempAggregated[$monthSortKey])) {
+                                $tempAggregated[$monthSortKey] = [
+                                    'month' => $history->month,
+                                    'penambahan' => 0,
+                                    'pengurangan' => 0,
+                                    'nomor' => [],
+                                    'keterangan' => [],
+                                ];
+                            }
+
+                            $penambahan = 0;
+                            $pengurangan = 0;
+
+                            if ($history->type == \App\Models\PointHistory::POINT_TYPE_EARN) {
+                                $penambahan = (int) $history->points;
+                                $totalPointCustomers[$accNo]['penambahan'] += $penambahan;
+                            } else if ($history->type == \App\Models\PointHistory::POINT_TYPE_EXPIRED) {
+                                $pengurangan = (int) abs($history->points);
+                                $totalPointCustomers[$accNo]['pengurangan'] += $pengurangan;
+                            } else {
+                                $val = (int) $history->points;
+                                if ($val > 0) {
+                                    $penambahan = $val;
+                                    $totalPointCustomers[$accNo]['penambahan'] += $penambahan;
+                                } else {
+                                    $pengurangan = abs($val);
+                                    $totalPointCustomers[$accNo]['pengurangan'] += $pengurangan;
+                                }
+                            }
+
+                            $tempAggregated[$monthSortKey]['penambahan'] += $penambahan;
+                            $tempAggregated[$monthSortKey]['pengurangan'] += $pengurangan;
+
+                            $ticket = $ticketsByPeriod["{$history->year}_{$history->month}"] ?? null;
+                            if ($ticket && $ticket->range_start && $ticket->range_end) {
+                                $rangeDesc = "{$ticket->range_start} s/d {$ticket->range_end}";
+                                if (!in_array($rangeDesc, $tempAggregated[$monthSortKey]['nomor'])) {
+                                    $tempAggregated[$monthSortKey]['nomor'][] = $rangeDesc;
+                                }
+                            }
+
+                            $tempAggregated[$monthSortKey]['keterangan'][] = $history->description ?? "{$history->type} {$history->points} KUPON";
+                        }
                     }
-                }
 
-                foreach ($account->pointHistories as $history) {
-                    $monthSortKey = sprintf("%04d_%02d", $history->year, $history->month);
-                    if (!isset($tempAggregated[$monthSortKey])) {
-                        $tempAggregated[$monthSortKey] = [
-                            'month' => $history->month,
-                            'penambahan' => 0,
-                            'pengurangan' => 0,
-                            'nomor' => [],
-                            'keterangan' => [],
+                    ksort($tempAggregated);
+                    $runningSaldo = 0;
+                    foreach ($tempAggregated as $item) {
+                        $monthLabel = isset(DateHelper::MONTHS[$item['month']]) ? DateHelper::MONTHS[$item['month']] : 'N/A';
+
+                        $runningSaldo += ($item['penambahan'] - $item['pengurangan']);
+                        if ($runningSaldo < 0) {
+                            $runningSaldo = 0;
+                        }
+
+                        $allCoupons[] = [
+                            'periode' => $monthLabel,
+                            'penambahan' => number_format($item['penambahan'], 0, ',', '.'),
+                            'pengurangan' => number_format($item['pengurangan'], 0, ',', '.'),
+                            'nomor' => implode('<br>', array_unique($item['nomor'])),
+                            'saldo' => number_format($runningSaldo, 0, ',', '.'),
+                            'keterangan' => implode('<br>', array_unique($item['keterangan'])),
                         ];
                     }
 
-                    $penambahan = 0;
-                    $pengurangan = 0;
+                    // Inject 0 point row if no history (User requirement)
+                    if (empty($allCoupons)) {
+                        $allCoupons[] = [
+                            'periode' => $monthName . ' ' . $year,
+                            'penambahan' => "0",
+                            'pengurangan' => "0",
+                            'nomor' => "-",
+                            'saldo' => "0",
+                            'keterangan' => "Point Perolehan 0",
+                        ];
+                    }
 
-                    if ($history->type == \App\Models\PointHistory::POINT_TYPE_EARN) {
-                        $penambahan = (int) $history->points;
-                        $totalPointCustomers[$accNo]['penambahan'] += $penambahan;
-                    } else if ($history->type == \App\Models\PointHistory::POINT_TYPE_EXPIRED) {
-                        $pengurangan = (int) abs($history->points);
-                        $totalPointCustomers[$accNo]['pengurangan'] += $pengurangan;
-                    } else {
-                        // Handle other types like ADJUSTMENT
-                        $val = (int) $history->points;
-                        if ($val > 0) {
-                            $penambahan = $val;
-                            $totalPointCustomers[$accNo]['penambahan'] += $penambahan;
+                    $totalPoints = 0;
+                    $totalPointDescriptions = "";
+                    foreach ($totalPointCustomers as $accountNumber => $tp) {
+                        $netAcc = $tp['penambahan'] - $tp['pengurangan'];
+                        if ($netAcc < 0) {
+                            $netAcc = 0;
+                        }
+                        $totalPoints += $netAcc;
+
+                        if ($tp['penambahan'] > 0) {
+                            $totalPointDescriptions .= "REK {$accountNumber} BERTAMBAH {$tp['penambahan']} KUPON<br>";
+                        }
+                        if ($tp['pengurangan'] > 0) {
+                            $totalPointDescriptions .= "REK {$accountNumber} BERKURANG {$tp['pengurangan']} KUPON<br>";
+                        }
+                    }
+
+                    foreach ($customer->accounts as $account) {
+                        $data = [
+                            'account_number' => $account->account_number,
+                            'branch' => $account->branch->branch_name ?? 'N/A',
+                            'customer_name' => $customer->name,
+                            'period' => "01 {$monthName} s/d " . Carbon::create($year, $month)->endOfMonth()->format('d') . " {$monthName} {$year}",
+                            'cif_number' => $customer->cif,
+                            'coupons' => $allCoupons,
+                            'showSuccessMessage' => true,
+                            'monthName' => $monthName,
+                            'year' => $year,
+                            'month' => $month,
+                            'current_date' => $currentDate,
+                            'totalPoints' => $totalPoints,
+                            'totalPointDescriptions' => $totalPointDescriptions
+                        ];
+
+                        Log::info("Generating PDF for Account: {$account->account_number} (CIF: {$customer->cif})");
+                        $urlPdf = $this->processTicket($data);
+                        $filename = basename($urlPdf);
+
+                        $chunkDocuments[] = [
+                            'customer_id' => $customer->id,
+                            'account_id' => $account->id,
+                            'type' => AccountDocument::TYPE_ESTATEMENT,
+                            'filename' => $filename,
+                            'path' => $urlPdf,
+                            'file_description' => "Bank Statement CIF: {$customer->cif}, Acc: {$account->account_number}, {$monthName} {$year}",
+                            'period' => $currentDate->format('Y-m-d'),
+                            'is_merged' => false,
+                            'status' => AccountDocument::STATUS_ACTIVE,
+                            'document_type' => AccountDocument::TYPE_ESTATEMENT,
+                            'metadata' => json_encode([
+                                'month' => $month,
+                                'year' => $year,
+                                'account_number' => $account->account_number,
+                                'branch' => $account->branch->branch_name ?? 'N/A',
+                                'customer_name' => $customer->name,
+                                'date_of_birth' => $customer->date_of_birth ?? null,
+                                'account_company_book' => $account->branch?->company_book ?? null,
+                                'period' => "01 {$monthName} s/d " . Carbon::create($year, $month)->endOfMonth()->format('d') . " {$monthName} {$year}",
+                                'cif_number' => $customer->cif,
+                                'coupons' => $allCoupons,
+                                'showSuccessMessage' => true,
+                                'monthName' => $monthName,
+                                'current_date' => $currentDate
+                            ])
+                        ];
+                    }
+                }
+
+                // Save and process storage for this chunk
+                if (!empty($chunkDocuments)) {
+                    AccountDocument::upsert(array_values($chunkDocuments), ['customer_id', 'account_id', 'document_type'], ['path', 'filename', 'file_description', 'metadata']);
+
+                    foreach ($chunkDocuments as $doc) {
+                        $metaData = json_decode($doc['metadata'], true);
+                        if ($mergePdfBankStatement) {
+                            $this->processMerge($doc['path'], $metaData['date_of_birth'], $metaData['account_company_book'], $metaData['account_number'], $metaData['year'], $metaData['month']);
                         } else {
-                            $pengurangan = abs($val);
-                            $totalPointCustomers[$accNo]['pengurangan'] += $pengurangan;
+                            $startOfMonth = Carbon::parse($metaData['current_date'])->startOfMonth()->format('Ymd');
+                            $endOfMonth = Carbon::parse($metaData['current_date'])->endOfMonth()->format('Ymd');
+                            $finalFilename = $metaData['account_number'] . '.' . $startOfMonth . '.' . $endOfMonth . '.1.pdf';
+                            $fullPath = sprintf('%s/%s/%s', $t24Path, $metaData['year'] . str_pad($metaData['month'], 2, '0', STR_PAD_LEFT), $metaData['account_company_book']);
+                            $this->uploadBankStatement($finalFilename, $t24Path, $fullPath, $doc['path']);
                         }
                     }
-
-                    $tempAggregated[$monthSortKey]['penambahan'] += $penambahan;
-                    $tempAggregated[$monthSortKey]['pengurangan'] += $pengurangan;
-
-                    // Get ticket range if available
-                    $ticket = $ticketsByPeriod["{$history->year}_{$history->month}"] ?? null;
-                    if ($ticket && $ticket->range_start && $ticket->range_end) {
-                        $rangeDesc = "{$ticket->range_start} s/d {$ticket->range_end}";
-                        if (!in_array($rangeDesc, $tempAggregated[$monthSortKey]['nomor'])) {
-                            $tempAggregated[$monthSortKey]['nomor'][] = $rangeDesc;
-                        }
-                    }
-
-                    $tempAggregated[$monthSortKey]['keterangan'][] = $history->description ?? "{$history->type} {$history->points} KUPON";
                 }
-            }
-
-            // Phase 1.5: Finalize allCoupons by month
-            ksort($tempAggregated);
-            $runningSaldo = 0;
-            foreach ($tempAggregated as $item) {
-                $monthLabel = isset(DateHelper::MONTHS[$item['month']]) ? DateHelper::MONTHS[$item['month']] : 'N/A';
-
-                $runningSaldo += ($item['penambahan'] - $item['pengurangan']);
-                if ($runningSaldo < 0) {
-                    $runningSaldo = 0; // Reset to 0 if negative
-                }
-
-                $allCoupons[] = [
-                    'periode' => $monthLabel,
-                    'penambahan' => number_format($item['penambahan'], 0, ',', '.'),
-                    'pengurangan' => number_format($item['pengurangan'], 0, ',', '.'),
-                    'nomor' => implode('<br>', array_unique($item['nomor'])),
-                    'saldo' => number_format($runningSaldo, 0, ',', '.'),
-                    'keterangan' => implode('<br>', array_unique($item['keterangan'])),
-                ];
-            }
-
-            // Phase 1.6: Calculate Final Total Points and Descriptions
-            $totalPoints = 0;
-            $totalPointDescriptions = "";
-            foreach ($totalPointCustomers as $accountNumber => $tp) {
-                $netAcc = $tp['penambahan'] - $tp['pengurangan'];
-                if ($netAcc < 0) {
-                    $netAcc = 0; // Reset to 0 if negative
-                }
-                $totalPoints += $netAcc;
-
-                if ($tp['penambahan'] > 0) {
-                    $totalPointDescriptions .= "REK {$accountNumber} BERTAMBAH {$tp['penambahan']} KUPON<br>";
-                }
-                if ($tp['pengurangan'] > 0) {
-                    $totalPointDescriptions .= "REK {$accountNumber} BERKURANG {$tp['pengurangan']} KUPON<br>";
-                }
-            }
-
-            if (empty($allCoupons)) {
-                continue;
-            }
-
-            $monthName = DateHelper::MONTHS[$month];
-
-            // Phase 2: PDF Generation per account
-            foreach ($customer->accounts as $account) {
-                // We use the first participant of THIS specific account for the header if available
-                $participant = $account->participants->first();
-
-                $data = [
-                    'account_number' => $account->account_number,
-                    'branch' => $account->branch->branch_name ?? 'N/A',
-                    'customer_name' => $customer->name,
-                    'period' => "01 {$monthName} s/d " . Carbon::create($year, $month)->endOfMonth()->format('d') . " {$monthName} {$year}",
-                    'cif_number' => $customer->cif,
-                    'coupons' => $allCoupons,
-                    'showSuccessMessage' => true,
-                    'monthName' => $monthName,
-                    'year' => $year,
-                    'month' => $month,
-                    'current_date' => $currentDate,
-                    'totalPoints' => $totalPoints,
-                    'totalPointDescriptions' => $totalPointDescriptions
-                ];
-
-                Log::info("Generating PDF for Account: {$account->account_number} (CIF: {$customer->cif})");
-                $urlPdf = $this->processTicket($data);
-                $filename = basename($urlPdf);
-
-                $documents[] = [
-                    'customer_id' => $customer->id,
-                    'account_id' => $account->id,
-                    'type' => AccountDocument::TYPE_ESTATEMENT,
-                    'filename' => $filename,
-                    'path' => $urlPdf,
-                    'file_description' => "Bank Statement CIF: {$customer->cif}, Acc: {$account->account_number}, {$monthName} {$year}",
-                    'period' => $currentDate->format('Y-m-d'),
-                    'is_merged' => false,
-                    'status' => AccountDocument::STATUS_ACTIVE,
-                    'document_type' => AccountDocument::TYPE_ESTATEMENT,
-                    'metadata' => json_encode([
-                        'month' => $month,
-                        'year' => $year,
-                        'account_number' => $account->account_number,
-                        'branch' => $account->branch->branch_name ?? 'N/A',
-                        'customer_name' => $customer->name,
-                        'date_of_birth' => $customer->date_of_birth ?? null,
-                        'account_company_book' => $account->branch?->company_book ?? null,
-                        'period' => "01 {$monthName} s/d " . Carbon::create($year, $month)->endOfMonth()->format('d') . " {$monthName} {$year}",
-                        'cif_number' => $customer->cif,
-                        'coupons' => $allCoupons,
-                        'showSuccessMessage' => true,
-                        'monthName' => $monthName,
-                        'current_date' => $currentDate
-                    ])
-                ];
-            }
-        }
-
-        $result = AccountDocument::upsert(array_values($documents), ['customer_id', 'account_id', 'document_type'], ['path', 'filename', 'file_description', 'metadata']);
-        Log::info("Total Documents Inserted: {$result}");
-        if ($result > 0) {
-            $mergePdfBankStatement = (bool) Setting::where('key', 'merge_pdf_bank_statement')->first()->value ?? false;
-            Log::info("Merge PDF Bank Statement: {$mergePdfBankStatement}");
-            if (count($documents) > 0) {
-                foreach ($documents as $document) {
-                    Log::info("Processing Document: {$document['filename']}");
-                    $pathDocument = $document['path'];
-                    $metaData = json_decode($document['metadata'], true);
-                    if ($mergePdfBankStatement) {
-                        Log::info("Processing Merge PDF Bank Statement: {$document['filename']}");
-                        $this->processMerge($pathDocument, $metaData['date_of_birth'], $metaData['account_company_book'], $metaData['account_number'], $metaData['year'], $metaData['month']);
-                    } else {
-                        Log::info("Processing Upload PDF Bank Statement: {$document['filename']}");
-                        $path = env('CORE_T24_PATH_STATEMENT');
-                        // $finalFilename = 5310234905.20251001.20251031.1.pdf
-                        $currentDate = Carbon::parse($metaData['current_date']);
-                        $startOfMonth = $currentDate->startOfMonth()->format('Ymd');
-                        $endOfMonth = $currentDate->endOfMonth()->format('Ymd');
-                        $finalFilename = $metaData['account_number'] . '.' . $startOfMonth . '.' . $endOfMonth . '.1.pdf';
-                        $fullPath = sprintf('%s/%s/%s', $path, $metaData['year'] . str_pad($metaData['month'], 2, '0', STR_PAD_LEFT), $metaData['account_company_book']);
-                        $this->uploadBankStatement($finalFilename, $path, $fullPath, $pathDocument);
-                    }
-                }
-            }
-        }
+            });
 
         $finishedAt = new \DateTime();
         Log::info('Generate bank statement PDF finished: ' . $finishedAt->format('Y-m-d H:i:s'));
@@ -363,7 +343,12 @@ class GenerateBankStatementPDFCommand extends Command
         $pattern = "{$parts[0]}.{$parts[1]}.{$parts[2]}";
 
         // List files in the specific directory
-        $files = $disk->files($bankStatementPath);
+        try {
+            $files = $disk->files($bankStatementPath);
+        } catch (\Exception $e) {
+            Log::error("Failed to list files in SFTP: " . $e->getMessage());
+            $files = [];
+        }
 
         $maxSequence = 0;
         foreach ($files as $file) {
@@ -384,17 +369,50 @@ class GenerateBankStatementPDFCommand extends Command
         }
 
         $nextSequence = $maxSequence + 1;
+
+        // User requirement: if files is empty (sequence 1), cancel and mark failed.
+        // Upload only if sequence > 1 (file exists).
+        if ($nextSequence === 1) {
+            Log::warning("Sequence is 1 (file does not exist on SFTP). Cancelling upload for {$finalFilename} as per requirement.");
+            \App\Models\FailedUpload::create([
+                'filename' => $finalFilename,
+                'local_path' => $fullPath,
+                'target_directory' => $bankStatementPath,
+                'error_message' => "Sequence start from 1, cancel upload as per requirement.",
+                'status' => 'failed',
+                'metadata' => [
+                    'pattern' => $pattern,
+                    'next_sequence' => $nextSequence,
+                    'original_filename' => $finalFilename
+                ]
+            ]);
+            return;
+        }
+
         $newFilename = "{$bankStatementPath}/{$pattern}.{$nextSequence}.pdf";
 
         Log::info("Uploading bank statement to T24 SFTP: {$newFilename}");
 
         try {
+            dd(PdfHelper::compress($newFilename, 'core_t24_sftp'));
             $disk->put($newFilename, file_get_contents($fullPath), [
                 'visibility' => 'private',
                 'directory_visibility' => 'private'
             ]);
         } catch (\Exception $e) {
             Log::error("Failed to upload bank statement: " . $e->getMessage());
+            \App\Models\FailedUpload::create([
+                'filename' => basename($newFilename),
+                'local_path' => $fullPath,
+                'target_directory' => $bankStatementPath,
+                'error_message' => $e->getMessage(),
+                'status' => 'failed',
+                'metadata' => [
+                    'pattern' => $pattern,
+                    'next_sequence' => $nextSequence,
+                    'full_target_path' => $newFilename
+                ]
+            ]);
         }
     }
 }

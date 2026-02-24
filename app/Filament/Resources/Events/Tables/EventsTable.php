@@ -8,6 +8,7 @@ use App\Models\Event;
 use App\Services\EventService;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ExportAction;
@@ -86,6 +87,7 @@ class EventsTable
                     ->modalHeading('Transfer Participants & Tickets')
                     ->modalDescription('This will move all participants and lottery tickets from the source event to this event. History will be preserved in the event log.')
                     ->visible(fn(Event $record) => $record->status === Event::STATUS_DRAFT || $record->status === Event::STATUS_ACTIVE),
+                DeleteAction::make(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

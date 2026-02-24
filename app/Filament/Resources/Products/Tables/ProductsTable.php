@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Products\Tables;
 use App\Filament\Exports\ProductExporter;
 use App\Filament\Imports\ProductImporter;
 use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ExportAction;
@@ -69,6 +70,7 @@ class ProductsTable
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make(),
+                DeleteAction::make(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

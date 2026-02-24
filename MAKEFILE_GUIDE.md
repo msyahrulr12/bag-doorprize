@@ -24,14 +24,14 @@ make queue
 
 Override these variables when running commands:
 
-| Variable           | Default                 | Description                                         |
-| ------------------ | ----------------------- | --------------------------------------------------- |
-| `OCTANE_SERVER`    | `frankenphp`            | Octane server type (frankenphp, swoole, roadrunner) |
-| `OCTANE_HOST`      | `0.0.0.0`               | Server host address                                 |
-| `OCTANE_PORT`      | `8000`                  | Server port number                                  |
-| `OCTANE_WORKERS`   | `4`                     | Number of worker processes                          |
-| `QUEUE_CONNECTION` | `database`              | Queue connection driver                             |
-| `QUEUE_NAMES`      | `tickets,imports,draws` | Comma-separated queue names                         |
+| Variable           | Default                                 | Description                                         |
+| ------------------ | --------------------------------------- | --------------------------------------------------- |
+| `OCTANE_SERVER`    | `frankenphp`                            | Octane server type (frankenphp, swoole, roadrunner) |
+| `OCTANE_HOST`      | `0.0.0.0`                               | Server host address                                 |
+| `OCTANE_PORT`      | `8000`                                  | Server port number                                  |
+| `OCTANE_WORKERS`   | `4`                                     | Number of worker processes                          |
+| `QUEUE_CONNECTION` | `database`                              | Queue connection driver                             |
+| `QUEUE_NAMES`      | `tickets,imports,draws,reports,default` | Comma-separated queue names                         |
 
 ## Commands Reference
 

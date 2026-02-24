@@ -142,7 +142,7 @@ OCTANE_SERVER=swoole
 5. **Start queue worker**:
 
     ```bash
-    php artisan queue:work --queue=tickets,imports,draws --daemon
+    php artisan queue:work --queue=tickets,imports,draws,reports,default --daemon
     ```
 
 6. **Start Octane** (if using):
