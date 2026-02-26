@@ -20,13 +20,17 @@ class AccountDocument extends Model implements Auditable
         'status',
         'metadata',
         'document_type',
-        'file_description'
+        'file_description',
+        'has_stored_to_sftp',
+        'file_name_t24',
+        'file_path_t24',
     ];
 
     protected $casts = [
         'period' => 'date',
         'is_merged' => 'boolean',
         'metadata' => 'json',
+        'has_stored_to_sftp' => 'boolean',
     ];
 
     public const STATUS_PENDING = 'PENDING';

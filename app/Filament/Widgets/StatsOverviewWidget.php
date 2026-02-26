@@ -43,7 +43,7 @@ class StatsOverviewWidget extends BaseWidget
                 ->description('Pending file uploads')
                 ->descriptionIcon('heroicon-m-x-circle')
                 ->color(fn() => \App\Models\FailedUpload::where('status', 'failed')->exists() ? 'danger' : 'success')
-                ->url(\Modules\LogManagement\Filament\Resources\FailedUploads\FailedUploadResource::getUrl()),
+                ->url(\Modules\LogManagement\Filament\Resources\FailedUploadResource::getUrl()),
         ];
     }
 }

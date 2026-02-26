@@ -16,7 +16,6 @@ class EditBranch extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            DeleteAction::make(),
             RestoreAction::make()
         ];
     }

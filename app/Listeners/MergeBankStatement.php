@@ -48,6 +48,8 @@ class MergeBankStatement
 
         $mergedPath = 'public/bank-statements/';
         $tempPath = '/tmp';
+        $successCount = 0;
+
         foreach ($files as $file) {
             $filenameExp = explode('/', $file);
             $filename = $filenameExp[count($filenameExp) - 1];
@@ -59,7 +61,7 @@ class MergeBankStatement
             // Decrypt using qpdf
             $passwordPdf = env('PDF_OWNER_PASSWORD', 'bag123!');
             $outputPdf = $tempPath . '/decrypted_' . $filename;
-            Process::run("qpdf --decrypt --password=\"$passwordPdf\" \"$tempPath/$filename\" \"$outputPdf\"");
+            \Illuminate\Support\Facades\Process::run("qpdf --decrypt --password=\"$passwordPdf\" \"$tempPath/$filename\" \"$outputPdf\"");
             chmod($outputPdf, 0777);
 
             PdfHelper::mergePdf(
@@ -78,10 +80,33 @@ class MergeBankStatement
                 ]
             );
 
-            $disk->put($file, file_get_contents($mergedPath . $filename), [
+            $putSuccess = $disk->put($file, file_get_contents($mergedPath . $filename), [
                 'visibility' => 'private',
                 'directory_visibility' => 'private'
             ]);
+
+            if ($putSuccess) {
+                $successCount++;
+            }
+
+            // Cleanup temp merged file
+            if (file_exists($mergedPath . $filename)) {
+                unlink($mergedPath . $filename);
+            }
+        }
+
+        if ($successCount > 0) {
+            // Update flag
+            \App\Models\AccountDocument::whereHas('account', function ($q) use ($event) {
+                $q->where('account_number', $event->accountNumber);
+            })
+                ->where('document_type', \App\Models\AccountDocument::TYPE_ESTATEMENT)
+                ->update(['has_stored_to_sftp' => true]);
+
+            // Remove local generated file as per requirement
+            if (file_exists($event->bankStatementPdfPath)) {
+                unlink($event->bankStatementPdfPath);
+            }
         }
     }
 

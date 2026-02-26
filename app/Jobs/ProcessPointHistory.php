@@ -21,8 +21,7 @@ class ProcessPointHistory implements ShouldQueue
      * Create a new job instance.
      */
     public function __construct(
-        private array $chunk,
-        private array $header,
+        private array $customers,
         private array $products,
         private array $branches,
         private int $month,
@@ -39,33 +38,31 @@ class ProcessPointHistory implements ShouldQueue
     public function handle(): void
     {
         Log::info(sprintf('Running Job Process Point History (%s) at %s', $this->type, now()->toDateTimeString()));
-        $rows = [];
-        foreach ($this->chunk as $row) {
-            if (count($this->header) !== count($row)) {
-                continue;
-            }
-            $row = array_map('trim', $row);
-            $rows[] = array_combine($this->header, $row);
-        }
 
-        if (empty($rows)) {
+        if (empty($this->customers)) {
             return;
         }
 
-        Log::info(sprintf('Processing Point History (%s)...', $this->type));
-        DB::transaction(function () use ($rows) {
+        // 0. Pre-convert customers to associative arrays once
+        $customers = array_map(function ($customer) {
+            return (array) $customer;
+        }, $this->customers);
+
+        Log::info(sprintf('Processing Point History (%s) for %d records...', $this->type, count($customers)));
+
+        DB::transaction(function () use ($customers) {
             // 1. Process Customers
-            $this->processCustomers($rows);
+            $this->processCustomers($customers);
 
             // 2. Process Accounts
-            $this->processAccounts($rows);
+            $this->processAccounts($customers);
 
-            // 3. Process Point Histories (capturing the data for further processing)
-            $pointHistories = $this->processPointHistories($rows);
+            // 3. Process Point Histories
+            $pointHistories = $this->processPointHistories($customers);
 
             if ($this->eventId) {
                 // 4. Process Participants
-                $participantMap = $this->processParticipants($rows);
+                $participantMap = $this->processParticipants($customers);
 
                 // 5. Process Lottery Tickets
                 event(new PointHistoryProcessed($pointHistories, $participantMap, $this->eventId, $this->month, $this->year));
@@ -75,34 +72,34 @@ class ProcessPointHistory implements ShouldQueue
         Log::info('Job Process Point History finished at ' . now()->toDateTimeString());
     }
 
-    private function processCustomers(array $rows): void
+    private function processCustomers(array $customers): void
     {
         Log::info('Processing Customers...');
-        $customers = [];
-        foreach ($rows as $row) {
-            $branchCodeCif = $row['cus_open_branch'] ?? null;
+        $dataCustomers = [];
+        foreach ($customers as $customer) {
+            $branchCodeCif = $customer['cus_open_branch'] ?? null;
             $branchIdCif = $this->branches[$branchCodeCif] ?? null;
             if (!$branchIdCif) {
                 continue;
             }
 
-            $customers[$row['cif']] = [
+            $dataCustomers[$customer['cif']] = [
                 'branch_id' => $branchIdCif,
-                'name' => $row['name'],
-                'cif' => $row['cif'],
-                'email' => $row['email'],
+                'name' => $customer['name'],
+                'cif' => $customer['cif'],
+                'email' => $customer['email'],
                 'status' => Customer::STATUS_ACTIVE,
-                'date_of_birth' => isset($row['date_of_birth']) && $row['date_of_birth'] !== '' ? $row['date_of_birth'] : null,
+                'date_of_birth' => isset($customer['date_of_birth']) && $customer['date_of_birth'] !== '' ? $customer['date_of_birth'] : null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
         }
 
-        Log::info('Total Data Customers: ' . count($customers));
+        Log::info('Total Data Customers to upsert: ' . count($dataCustomers));
 
-        if (!empty($customers)) {
+        if (!empty($dataCustomers)) {
             Customer::upsert(
-                array_values($customers),
+                array_values($dataCustomers),
                 ['cif'],
                 ['name', 'email', 'branch_id', 'updated_at']
             );
@@ -111,39 +108,43 @@ class ProcessPointHistory implements ShouldQueue
         Log::info('Customers processed');
     }
 
-    private function processAccounts(array $rows): void
+    private function processAccounts(array $customers): void
     {
         Log::info('Processing Accounts...');
-        // Fetch customer mapping for this chunk
-        $cifs = array_unique(array_column($rows, 'cif'));
+
+        $cifs = array_unique(array_column($customers, 'cif'));
         $customerMap = Customer::whereIn('cif', $cifs)->pluck('id', 'cif')->toArray();
 
         $accounts = [];
-        foreach ($rows as $row) {
-            $customerId = $customerMap[$row['cif']] ?? null;
-            $branchIdAccount = $this->branches[$row['acc_open_branch']] ?? null;
-            $productId = $this->products[$row['jenis_rekening']] ?? null;
+        foreach ($customers as $customer) {
+            $customerId = $customerMap[$customer['cif']] ?? null;
+            $branchIdAccount = $this->branches[$customer['acc_open_branch']] ?? null;
+            $productId = $this->products[$customer['jenis_rekening']] ?? null;
 
             if (!$customerId || !$branchIdAccount || !$productId) {
                 continue;
             }
 
-            $accounts[$row['account_number'] ?? $row['ac_id']] = [
+            $accNo = $customer['account_number'] ?? ($customer['ac_id'] ?? null);
+            if (!$accNo)
+                continue;
+
+            $accounts[$accNo] = [
                 'customer_id' => $customerId,
                 'branch_id' => $branchIdAccount,
                 'product_id' => $productId,
-                'account_number' => $row['account_number'] ?? $row['ac_id'],
-                'account_type' => $row['jenis_rekening'],
-                'account_opening_date' => $row['account_opening_date'] ?? null,
-                'account_opening_balance' => $row['account_opening_balance'] ?? 0,
-                'current_balance' => ($row['avgbal_tab'] ?? $row['avg_balance']) ?? 0,
+                'account_number' => $accNo,
+                'account_type' => $customer['jenis_rekening'],
+                'account_opening_date' => $customer['account_opening_date'] ?? null,
+                'account_opening_balance' => (float) ($customer['account_opening_balance'] ?? 0),
+                'current_balance' => (float) (($customer['avgbal_tab'] ?? ($customer['avg_balance'] ?? 0))),
                 'created_at' => now(),
                 'updated_at' => now(),
                 'status' => Account::STATUS_ACTIVE,
             ];
         }
 
-        Log::info('Total Data Accounts: ' . count($accounts));
+        Log::info('Total Data Accounts to upsert: ' . count($accounts));
 
         if (!empty($accounts)) {
             Account::upsert(
@@ -156,11 +157,10 @@ class ProcessPointHistory implements ShouldQueue
         Log::info('Accounts processed');
     }
 
-    private function processPointHistories(array $rows): array
+    private function processPointHistories(array $customers): array
     {
         Log::info('Processing Point Histories...');
 
-        // 1. Determine previous month/year
         $prevMonth = $this->month - 1;
         $prevYear = $this->year;
         if ($prevMonth === 0) {
@@ -168,43 +168,56 @@ class ProcessPointHistory implements ShouldQueue
             $prevYear--;
         }
 
-        // 2. Fetch account mapping for this chunk
-        $arrCol = array_column($rows, 'account_number') ? array_column($rows, 'account_number') : array_column($rows, 'ac_id');
-        $accountNumbers = array_unique($arrCol);
+        $accountNumbers = array_filter(array_unique(array_map(fn($c) => $c['account_number'] ?? ($c['ac_id'] ?? null), $customers)));
         $accountMap = Account::whereIn('account_number', $accountNumbers)->pluck('id', 'account_number')->toArray();
 
-        // 3. Fetch previous month's amount from PointHistory
         $previousAmounts = PointHistory::whereIn('account_id', array_values($accountMap))
             ->where('month', $prevMonth)
             ->where('year', $prevYear)
             ->pluck('amount', 'account_id')
             ->toArray();
 
+        // Optimize: Bulk fetch participants and their active ticket point totals for negative growth reset
+        $participants = Participant::whereIn('account_id', array_values($accountMap))
+            ->where('event_id', $this->eventId)
+            ->get(['id', 'account_id'])
+            ->keyBy('account_id');
+
+        $activeTicketPoints = [];
+        if ($participants->isNotEmpty()) {
+            $activeTicketPoints = LotteryTicket::whereIn('participant_id', $participants->pluck('id'))
+                ->where('status', LotteryTicket::STATUS_ACTIVE)
+                ->selectRaw('participant_id, SUM(total_points) as total')
+                ->groupBy('participant_id')
+                ->pluck('total', 'participant_id')
+                ->toArray();
+        }
+
         $pointHistories = [];
         $accountsToReset = [];
         $divider = (float) ($this->settings['point_divider'] ?? 100000);
+        $thresholdReductionBalance = (float) ($this->settings['threshold_reduction_balance'] ?? 100000);
 
-        foreach ($rows as $row) {
-            $accountNumber = $row['account_number'] ?? $row['ac_id'];
-            $accountId = $accountMap[$row['account_number'] ?? $row['ac_id']] ?? null;
+        foreach ($customers as $customer) {
+            $accountNumber = $customer['account_number'] ?? ($customer['ac_id'] ?? null);
+            $accountId = $accountMap[$accountNumber] ?? null;
             if (!$accountId) {
                 continue;
             }
 
-            $currentAmount = (float) (($row['avgbal_tab'] ?? $row['avg_balance']) ?? 0);
-            $prevAmount = $previousAmounts[$accountId] ?? 0; // Default to 0 if no history
+            $currentAmount = (float) (($customer['avgbal_tab'] ?? ($customer['avg_balance'] ?? 0)));
+            $prevAmount = (float) ($previousAmounts[$accountId] ?? 0);
             $growth = $currentAmount - $prevAmount;
 
-            // Trend check: if current - previous is minus (Step Id: 200/314)
-            $thresholdReductionBalance = $this->settings['threshold_reduction_balance'] ?? 100000;
-            // $isNegativeTrend = (($growth + $thresholdReductionBalance) < 0);
             $isNegativeTrend = ($growth < 0) && (abs($growth) > $thresholdReductionBalance);
             $type = PointHistory::POINT_TYPE_EARN;
             $typeText = "BERTAMBAH";
+            $points = 0;
+
             if ($isNegativeTrend) {
-                $participant = Participant::where('account_id', $accountId)->first();
-                $points = $participant ? -(LotteryTicket::where('participant_id', $participant->id)->where('status', LotteryTicket::STATUS_ACTIVE)->sum('total_points')) : 0;
-                Log::info(sprintf("Account %s has negative growth (%s). Resetting points.", $row['account_number'] ?? $row['ac_id'], $growth));
+                $participantId = $participants[$accountId]->id ?? null;
+                $points = $participantId ? -(($activeTicketPoints[$participantId] ?? 0)) : 0;
+                Log::info(sprintf("Account %s has negative growth (%s). Resetting points.", $accountNumber, $growth));
                 $type = PointHistory::POINT_TYPE_EXPIRED;
                 $typeText = "BERKURANG";
                 $accountsToReset[$accountId] = [
@@ -212,20 +225,15 @@ class ProcessPointHistory implements ShouldQueue
                     'type_text' => $typeText,
                     'points' => $points,
                     'account_number' => $accountNumber,
+                    'participant_id' => $participantId,
                 ];
-            } elseif ($growth == 0) {
-                $points = 0;
-                $type = PointHistory::POINT_TYPE_EARN;
-                $typeText = "BERTAMBAH";
-            } else {
-                // Point calculation based on type
+            } elseif ($growth > 0) {
                 $openingPoints = 0;
-                if ($this->type === 'ntb' && (float) ($row['account_opening_balance'] ?? 0) >= ($this->settings['min_opening_balance'] ?? 500000)) {
-                    $openingPoints = $this->settings['base_point_ntb'] ?? 10;
+                if ($this->type === 'ntb' && (float) ($customer['account_opening_balance'] ?? 0) >= ($this->settings['min_opening_balance'] ?? 500000)) {
+                    $openingPoints = (int) ($this->settings['base_point_ntb'] ?? 10);
                 }
                 $points = (int) floor($growth / $divider);
-                $points = $points < 0 ? 0 : $points;
-                $points += $openingPoints;
+                $points = max(0, $points) + $openingPoints;
             }
 
             $pointHistories[] = [
@@ -241,12 +249,10 @@ class ProcessPointHistory implements ShouldQueue
             ];
         }
 
-        Log::info('Total Data PointHistories: ' . count($pointHistories));
+        Log::info('Total records for PointHistory: ' . count($pointHistories));
 
         if (!empty($pointHistories)) {
             foreach ($pointHistories as $ph) {
-                // Since the unique constraint on (account_id, month, year) was removed to allow manual corrections,
-                // we use updateOrCreate to maintain automated records without crashing.
                 PointHistory::updateOrCreate(
                     [
                         'account_id' => $ph['account_id'],
@@ -266,28 +272,18 @@ class ProcessPointHistory implements ShouldQueue
 
         // 4. Handle resetting lottery tickets if any
         if ($this->eventId && !empty($accountsToReset)) {
-            // $participantIds = Participant::where('event_id', $this->eventId)
-            //     ->whereIn('account_id', array_column($accountsToReset, 'account_id'))
-            //     ->pluck('id')
-            //     ->toArray();
-            $participants = Participant::where('event_id', $this->eventId)
-                ->whereIn('account_id', array_column($accountsToReset, 'account_id'))
-                ->get();
-
-            if (!empty($participants)) {
-                foreach ($participants as $participant) {
-                    $accountNumber = $participant->account->account_number;
-                    $typeText = $accountsToReset[$participant->account_id]['type_text'];
-                    $points = $accountsToReset[$participant->account_id]['points'];
+            foreach ($accountsToReset as $accountId => $data) {
+                if ($data['participant_id']) {
                     LotteryTicket::where('event_id', $this->eventId)
-                        ->where('participant_id', $participant->id)
+                        ->where('participant_id', $data['participant_id'])
+                        ->where('status', LotteryTicket::STATUS_ACTIVE)
                         ->update([
                             'status' => LotteryTicket::STATUS_RESET,
-                            'description' => "REK {$accountNumber} {$typeText} {$points} KUPON",
+                            'description' => "REK {$data['account_number']} {$data['type_text']} " . abs($data['points']) . " KUPON",
                         ]);
                 }
-                Log::info('Reset lottery tickets for ' . count($participants) . ' participants');
             }
+            Log::info('Reset lottery tickets for ' . count($accountsToReset) . ' participants');
         }
 
         Log::info('PointHistories processed');
@@ -295,24 +291,16 @@ class ProcessPointHistory implements ShouldQueue
         return $pointHistories;
     }
 
-    private function processParticipants(array $rows): array
+    private function processParticipants(array $customers): array
     {
         Log::info('Processing Participants...');
 
-        // Handle both 'account_number' and 'ac_id' fields
-        $accountNumbers = [];
-        foreach ($rows as $row) {
-            $accountNumber = $row['account_number'] ?? $row['ac_id'] ?? null;
-            if ($accountNumber) {
-                $accountNumbers[] = $accountNumber;
-            }
-        }
-        $accountNumbers = array_unique($accountNumbers);
+        $accountNumbers = array_filter(array_unique(array_map(fn($c) => $c['account_number'] ?? ($c['ac_id'] ?? null), $customers)));
         $accountMap = Account::whereIn('account_number', $accountNumbers)->get()->keyBy('account_number');
 
         $participantIds = [];
-        foreach ($rows as $row) {
-            $account = $accountMap[$row['account_number'] ?? $row['ac_id']] ?? null;
+        foreach ($customers as $customer) {
+            $account = $accountMap[$customer['account_number'] ?? ($customer['ac_id'] ?? null)] ?? null;
             if (!$account)
                 continue;
 
@@ -320,11 +308,11 @@ class ProcessPointHistory implements ShouldQueue
                 'event_id' => $this->eventId,
                 'account_id' => $account->id,
             ], [
-                'participant_name' => $row['name'],
-                'participant_cif' => $row['cif'],
-                'participant_account_number' => $row['account_number'] ?? $row['ac_id'],
-                'participant_email' => $row['email'],
-                'participant_phone_number' => $row['phone_number'] ?? '',
+                'participant_name' => $customer['name'],
+                'participant_cif' => $customer['cif'],
+                'participant_account_number' => $account->account_number,
+                'participant_email' => $customer['email'],
+                'participant_phone_number' => $customer['phone_number'] ?? '',
                 'status' => 'active',
                 'updated_at' => now(),
             ]);

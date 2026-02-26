@@ -113,6 +113,20 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
+        'db_core_t24' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_URL'),
+            'host' => env('DB_CORE_T24_HOST', '127.0.0.1'),
+            'port' => env('DB_CORE_T24_PORT', '5432'),
+            'database' => env('DB_CORE_T24_DATABASE', 'laravel'),
+            'username' => env('DB_CORE_T24_USERNAME', 'root'),
+            'password' => env('DB_CORE_T24_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'core_t24_temp',
+            'sslmode' => 'prefer',
+        ],
     ],
 
     /*
@@ -148,7 +162,7 @@ return [
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
-            'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-database-'),
+            'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')) . '-database-'),
             'persistent' => env('REDIS_PERSISTENT', false),
         ],
 

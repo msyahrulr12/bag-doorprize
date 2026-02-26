@@ -47,7 +47,7 @@ class DocumentsRelationManager extends RelationManager
                     ->required()
                     ->default('pending'),
                 TextInput::make('path')
-                    ->required(),
+                    ->required()
             ]);
     }
 

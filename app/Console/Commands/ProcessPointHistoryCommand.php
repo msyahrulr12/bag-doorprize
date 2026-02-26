@@ -2,12 +2,12 @@
 
 namespace App\Console\Commands;
 
-use App\Helper\DateHelper;
 use App\Jobs\ProcessPointHistory;
 use App\Models\Branch;
 use App\Models\Event;
 use App\Models\Product;
 use App\Models\Setting;
+use DB;
 use Illuminate\Console\Command;
 use Storage;
 
@@ -66,34 +66,68 @@ class ProcessPointHistoryCommand extends Command
             // Get current setting
             $settings = Setting::where('group', 'general')->pluck('value', 'key')->toArray();
 
-            // Files to process
+            $eventId = $event?->id;
             $subMonth = $settings['point_sub_month'] ?? 1;
             $currentDate = now()->subMonths($subMonth);
+            $year = $currentDate->year;
+            $month = $currentDate->month;
             $lastMonth = $currentDate->lastOfMonth()->format('Y-m-d');
-            $pathDataSource = env('PATH_DATA_SOURCE', 'Prodev/Aplikasi_Undian');
-            $files = [
-                'ntb' => "{$pathDataSource}/Data_Nasabah_NTB_{$lastMonth}.csv",
-                'etb' => "{$pathDataSource}/Data_Nasabah_ETB_{$lastMonth}.csv",
-            ];
 
-            $disk = Storage::disk('s3');
+            // Init DB Core T24
+            $dbT24 = DB::connection('db_core_t24');
 
-            foreach ($files as $type => $filename) {
-                if (!$disk->exists($filename)) {
-                    $this->warn("File {$filename} not found in S3. Skipping...");
-                    continue;
-                }
+            // Process NTB
+            $totalNtb = $dbT24->table('undian_ntb')->where('file_date', $lastMonth)->count();
+            $this->info("Found {$totalNtb} NTB records to process.");
+            $barNtb = $this->output->createProgressBar($totalNtb);
+            $barNtb->start();
 
-                $content = $disk->get($filename);
+            $dbT24
+                ->table('undian_ntb')
+                ->where('file_date', $lastMonth)
+                ->orderBy('cif', 'asc')
+                ->chunk(500, function ($customers) use ($products, $branches, $month, $year, $settings, $eventId, $barNtb) {
+                    ProcessPointHistory::dispatch(
+                        $customers->toArray(),
+                        $products,
+                        $branches,
+                        $month,
+                        $year,
+                        'ntb',
+                        $settings,
+                        $eventId
+                    )->onQueue('imports');
+                    $barNtb->advance($customers->count());
+                });
+            $barNtb->finish();
+            $this->newLine(2);
 
-                $month = $currentDate->month;
-                $year = $currentDate->year;
-                $separator = '|';
+            // Process ETB
+            $totalEtb = $dbT24->table('undian_etb')->where('file_date', $lastMonth)->count();
+            $this->info("Found {$totalEtb} ETB records to process.");
+            $barEtb = $this->output->createProgressBar($totalEtb);
+            $barEtb->start();
 
-                $this->processFile($content, $type, $month, $year, $separator, $products, $branches, $event->id, $settings);
-            }
+            $dbT24
+                ->table('undian_etb')
+                ->where('file_date', $lastMonth)
+                ->orderBy('cif', 'asc')
+                ->chunk(500, function ($customers) use ($products, $branches, $month, $year, $settings, $eventId, $barEtb) {
+                    ProcessPointHistory::dispatch(
+                        $customers->toArray(),
+                        $products,
+                        $branches,
+                        $month,
+                        $year,
+                        'etb',
+                        $settings,
+                        $eventId
+                    )->onQueue('imports');
+                    $barEtb->advance($customers->count());
+                });
+            $barEtb->finish();
+            $this->newLine(2);
 
-            $this->newLine();
             $this->info('✓ All import jobs have been dispatched!');
 
             return 0;
@@ -127,13 +161,12 @@ class ProcessPointHistoryCommand extends Command
 
         $this->info('Dispatching ' . count($chunks) . ' job(s) to queue...');
 
-        $bar = $this->output->createProgressBar(count($chunks));
+        $bar = $this->output->createProgressBar(count($rows));
         $bar->start();
 
         foreach ($chunks as $chunk) {
             ProcessPointHistory::dispatch(
                 $chunk,
-                $header,
                 $products,
                 $branches,
                 $month,
@@ -142,7 +175,7 @@ class ProcessPointHistoryCommand extends Command
                 $settings,
                 $eventId
             )->onQueue('imports');
-            $bar->advance();
+            $bar->advance(count($chunk));
         }
 
         $bar->finish();

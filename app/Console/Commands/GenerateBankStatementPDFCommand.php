@@ -54,19 +54,18 @@ class GenerateBankStatementPDFCommand extends Command
             'accounts.branch',
             'accounts.participants',
             'accounts.participants.lotteryTickets',
-            'accounts.pointHistories'
+            'accounts.pointHistories',
+            'accounts.documents'
         ])
             ->chunkById(50, function ($customers) use ($month, $year, $currentDate, $monthName, $mergePdfBankStatement, $t24Path) {
                 $chunkDocuments = [];
 
                 foreach ($customers as $customer) {
                     $totalPoints = 0;
-                    $totalPointCustomers = [];
-                    $allCoupons = [];
-
                     Log::info('Aggregating data for customer: ' . $customer->name . ' (CIF: ' . $customer->cif . ')');
 
                     $tempAggregated = [];
+                    $totalPointCustomers = [];
                     foreach ($customer->accounts as $account) {
                         $accNo = $account->account_number;
                         if (!isset($totalPointCustomers[$accNo])) {
@@ -132,6 +131,7 @@ class GenerateBankStatementPDFCommand extends Command
 
                     ksort($tempAggregated);
                     $runningSaldo = 0;
+                    $allCoupons = [];
                     foreach ($tempAggregated as $item) {
                         $monthLabel = isset(DateHelper::MONTHS[$item['month']]) ? DateHelper::MONTHS[$item['month']] : 'N/A';
 
@@ -162,24 +162,37 @@ class GenerateBankStatementPDFCommand extends Command
                         ];
                     }
 
-                    $totalPoints = 0;
-                    $totalPointDescriptions = "";
+                    $totalPointsAggregate = 0;
+                    $totalPointDescriptionsAggregate = "";
                     foreach ($totalPointCustomers as $accountNumber => $tp) {
-                        $netAcc = $tp['penambahan'] - $tp['pengurangan'];
-                        if ($netAcc < 0) {
-                            $netAcc = 0;
+                        $net = $tp['penambahan'] - $tp['pengurangan'];
+                        if ($net < 0) {
+                            $net = 0;
                         }
-                        $totalPoints += $netAcc;
+                        $totalPointsAggregate += $net;
 
                         if ($tp['penambahan'] > 0) {
-                            $totalPointDescriptions .= "REK {$accountNumber} BERTAMBAH {$tp['penambahan']} KUPON<br>";
+                            $totalPointDescriptionsAggregate .= "REK {$accountNumber} BERTAMBAH {$tp['penambahan']} KUPON<br>";
                         }
                         if ($tp['pengurangan'] > 0) {
-                            $totalPointDescriptions .= "REK {$accountNumber} BERKURANG {$tp['pengurangan']} KUPON<br>";
+                            $totalPointDescriptionsAggregate .= "REK {$accountNumber} BERKURANG {$tp['pengurangan']} KUPON<br>";
                         }
                     }
 
                     foreach ($customer->accounts as $account) {
+                        // User requirement: skip if already stored to SFTP for this period
+                        $existingDoc = $account->documents
+                            ->where('document_type', AccountDocument::TYPE_ESTATEMENT)
+                            ->first();
+
+                        if (
+                            $existingDoc && $existingDoc->has_stored_to_sftp &&
+                            $existingDoc->period && $existingDoc->period->format('Y-m') === $currentDate->format('Y-m')
+                        ) {
+                            Log::info("Skipping Account: {$account->account_number} (CIF: {$customer->cif}) - already stored to SFTP for this period.");
+                            continue;
+                        }
+
                         $data = [
                             'account_number' => $account->account_number,
                             'branch' => $account->branch->branch_name ?? 'N/A',
@@ -192,8 +205,8 @@ class GenerateBankStatementPDFCommand extends Command
                             'year' => $year,
                             'month' => $month,
                             'current_date' => $currentDate,
-                            'totalPoints' => $totalPoints,
-                            'totalPointDescriptions' => $totalPointDescriptions
+                            'totalPoints' => $totalPointsAggregate,
+                            'totalPointDescriptions' => $totalPointDescriptionsAggregate
                         ];
 
                         Log::info("Generating PDF for Account: {$account->account_number} (CIF: {$customer->cif})");
@@ -211,6 +224,7 @@ class GenerateBankStatementPDFCommand extends Command
                             'is_merged' => false,
                             'status' => AccountDocument::STATUS_ACTIVE,
                             'document_type' => AccountDocument::TYPE_ESTATEMENT,
+                            'has_stored_to_sftp' => false, // Reset flag on fresh generation
                             'metadata' => json_encode([
                                 'month' => $month,
                                 'year' => $year,
@@ -232,7 +246,7 @@ class GenerateBankStatementPDFCommand extends Command
 
                 // Save and process storage for this chunk
                 if (!empty($chunkDocuments)) {
-                    AccountDocument::upsert(array_values($chunkDocuments), ['customer_id', 'account_id', 'document_type'], ['path', 'filename', 'file_description', 'metadata']);
+                    AccountDocument::upsert(array_values($chunkDocuments), ['customer_id', 'account_id', 'document_type'], ['path', 'filename', 'file_description', 'metadata', 'has_stored_to_sftp', 'period']);
 
                     foreach ($chunkDocuments as $doc) {
                         $metaData = json_decode($doc['metadata'], true);
@@ -243,7 +257,26 @@ class GenerateBankStatementPDFCommand extends Command
                             $endOfMonth = Carbon::parse($metaData['current_date'])->endOfMonth()->format('Ymd');
                             $finalFilename = $metaData['account_number'] . '.' . $startOfMonth . '.' . $endOfMonth . '.1.pdf';
                             $fullPath = sprintf('%s/%s/%s', $t24Path, $metaData['year'] . str_pad($metaData['month'], 2, '0', STR_PAD_LEFT), $metaData['account_company_book']);
-                            $this->uploadBankStatement($finalFilename, $t24Path, $fullPath, $doc['path']);
+
+                            $upload = $this->uploadBankStatement($finalFilename, $t24Path, $fullPath, $doc['path']);
+
+                            if ($upload != null) {
+                                $filename = explode('/', $upload);
+
+                                AccountDocument::where('customer_id', $doc['customer_id'])
+                                    ->where('account_id', $doc['account_id'])
+                                    ->where('document_type', AccountDocument::TYPE_ESTATEMENT)
+                                    ->update([
+                                        'has_stored_to_sftp' => true,
+                                        'file_name_t24' => $filename[count($filename) - 1],
+                                        'file_path_t24' => $upload
+                                    ]);
+
+                                if (file_exists($doc['path'])) {
+                                    Log::info("Removing local PDF after successful upload: " . $doc['path']);
+                                    unlink($doc['path']);
+                                }
+                            }
                         }
                     }
                 }
@@ -287,7 +320,7 @@ class GenerateBankStatementPDFCommand extends Command
         PdfHelper::writeAndSave('pdf.bank-statement-1', $data, $path, $statementFilename);
         $statementPath = $path . '/' . $statementFilename;
 
-        // 3. Merge them
+        // 3. Merge bank-statement with term and condition
         $finalFilename = "{$data['account_number']}_{$data['year']}_{$data['month']}.pdf";
         $finalPath = $path . '/' . $finalFilename;
 
@@ -330,7 +363,7 @@ class GenerateBankStatementPDFCommand extends Command
         Log::info('Finished processing merge pdf bank statements');
     }
 
-    private function uploadBankStatement(string $finalFilename, string $pathT24, string $bankStatementPath, string $fullPath)
+    private function uploadBankStatement(string $finalFilename, string $pathT24, string $bankStatementPath, string $fullPath): ?string
     {
         $disk = Storage::disk('core_t24_sftp');
 
@@ -338,7 +371,7 @@ class GenerateBankStatementPDFCommand extends Command
         $parts = explode('.', $finalFilename);
         if (count($parts) < 4) {
             Log::error("Invalid finalFilename format: {$finalFilename}");
-            return;
+            return false;
         }
         $pattern = "{$parts[0]}.{$parts[1]}.{$parts[2]}";
 
@@ -386,7 +419,7 @@ class GenerateBankStatementPDFCommand extends Command
                     'original_filename' => $finalFilename
                 ]
             ]);
-            return;
+            return false;
         }
 
         $newFilename = "{$bankStatementPath}/{$pattern}.{$nextSequence}.pdf";
@@ -394,11 +427,12 @@ class GenerateBankStatementPDFCommand extends Command
         Log::info("Uploading bank statement to T24 SFTP: {$newFilename}");
 
         try {
-            dd(PdfHelper::compress($newFilename, 'core_t24_sftp'));
             $disk->put($newFilename, file_get_contents($fullPath), [
                 'visibility' => 'private',
                 'directory_visibility' => 'private'
             ]);
+
+            return $newFilename;
         } catch (\Exception $e) {
             Log::error("Failed to upload bank statement: " . $e->getMessage());
             \App\Models\FailedUpload::create([
@@ -413,6 +447,7 @@ class GenerateBankStatementPDFCommand extends Command
                     'full_target_path' => $newFilename
                 ]
             ]);
+            return null;
         }
     }
 }

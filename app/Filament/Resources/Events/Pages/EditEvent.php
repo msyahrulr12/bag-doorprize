@@ -19,8 +19,6 @@ class EditEvent extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            DeleteAction::make(),
-            ForceDeleteAction::make(),
             RestoreAction::make(),
             ViewAction::make(),
             Action::make('List Events')

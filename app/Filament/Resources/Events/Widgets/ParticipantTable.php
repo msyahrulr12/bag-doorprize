@@ -17,6 +17,7 @@ use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ExportAction;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget;
 use Illuminate\Database\Eloquent\Builder;
@@ -79,11 +80,11 @@ class ParticipantTable extends TableWidget
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('account.customer.name')
                     ->label('Customer Name')
-                    ->searchable(['customers.name'])
+                    // ->searchable(['customers.name'])
                     ->sortable(),
                 TextColumn::make('account.account_number')
                     ->label('Account Number')
-                    ->searchable(['accounts.account_number'])
+                    ->searchable(['participant_account_number'])
                     ->sortable(),
                 TextColumn::make('participant_name')
                     ->label('Participant Name (Snapshot)')
@@ -139,7 +140,6 @@ class ParticipantTable extends TableWidget
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //
             ])
             ->headerActions([
                 ExportAction::make()
