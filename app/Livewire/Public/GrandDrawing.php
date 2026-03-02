@@ -65,13 +65,18 @@ class GrandDrawing extends Component
         $paginatedWinners = $this->paginatedWinners;
 
         if ($paginatedWinners->count() > 0) {
+            $firstWinner = $paginatedWinners->first();
+            $firstWinner->load(['participant.account.branch', 'participant.account.customer']);
+
             $this->winner = [
-                'ticket' => $paginatedWinners->first()->ticket?->toArray() ?? [],
-                'participant' => $paginatedWinners->first()->participant?->toArray() ?? [],
-                'customer' => $paginatedWinners->first()->participant?->account?->customer?->toArray() ?? [],
-                'lucky_number' => $paginatedWinners->first()->winning_number,
-                'winning_number' => $paginatedWinners->first()->winning_number,
-                'draw_session_id' => $paginatedWinners->first()->draw_session_id
+                'ticket' => $firstWinner->lotteryTicket?->toArray() ?? [],
+                'participant' => $firstWinner->participant?->toArray() ?? [],
+                'customer' => $firstWinner->participant?->account?->customer?->toArray() ?? [],
+                'lucky_number' => $firstWinner->winning_number,
+                'winning_number' => $firstWinner->winning_number,
+                'draw_session_id' => $firstWinner->draw_session_id,
+                'branch_name' => $firstWinner->branch_name,
+                'region' => $firstWinner->branch_region
             ];
 
             // For the table display
@@ -240,6 +245,21 @@ class GrandDrawing extends Component
                 $q->whereDoesntHave('accounts.participants.winners', function ($wq) use ($eventId) {
                     $wq->whereHas('eventPrize', fn($eq) => $eq->where('event_prizes.event_id', $eventId));
                 });
+
+                // Customer must not be in any pending/processing bulk draw batches for this event
+                $pendingBatchCustomerIds = \App\Models\BulkDrawBatch::whereHas('eventPrize', fn($ep) => $ep->where('event_id', $eventId))
+                    ->whereIn('status', ['PENDING', 'PROCESSING', 'COMPLETED'])
+                    ->get()
+                    ->pluck('results')
+                    ->flatten(1)
+                    ->pluck('customer.id')
+                    ->unique()
+                    ->filter()
+                    ->toArray();
+
+                if (!empty($pendingBatchCustomerIds)) {
+                    $q->whereNotIn('customers.id', $pendingBatchCustomerIds);
+                }
             });
 
         if ($region) {
@@ -322,10 +342,10 @@ class GrandDrawing extends Component
             'range_end' => $winnerData['ticket']['range_end'],
             'status' => Winner::STATUS_PENDING,
             'branch_id' => $winnerData['participant']['account']['branch_id'],
-            'branch_code' => $winnerData['participant']['account']['branch_code'],
-            'branch_name' => $winnerData['participant']['account']['branch_name'],
-            'branch_company_book' => $winnerData['participant']['account']['branch_company_book'],
-            'branch_region' => $winnerData['participant']['account']['branch_region'],
+            'branch_code' => $winnerData['participant']['account']['branch']['branch_code'],
+            'branch_name' => $winnerData['participant']['account']['branch']['branch_name'],
+            'branch_company_book' => $winnerData['participant']['account']['branch']['company_book'],
+            'branch_region' => $winnerData['participant']['account']['branch']['region'],
         ]);
 
         $this->eventPrize->decrement('remaining_quantity');

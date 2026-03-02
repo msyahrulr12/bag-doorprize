@@ -159,7 +159,6 @@ class DrawWinnerBulk extends Page
 
         $this->checkDrawSession();
 
-
         $this->form->fill([
             'draw_session_id' => $this->drawSessionId
         ]);
@@ -218,14 +217,29 @@ class DrawWinnerBulk extends Page
         $splitDraw = (fn() => $this->eventPrize->split_draw)();
         $this->searchData['split_draw'] = $splitDraw;
 
+        $sessions = DrawSession::where('event_id', $this->eventPrize->event_id)->get();
+
         return $schema
             ->components([
                 Select::make('draw_session_id')
                     ->label('Draw Session')
-                    ->options(DrawSession::where('event_id', $this->eventPrize->event_id)->pluck('name', 'id'))
+                    ->options($sessions->pluck('name', 'id'))
                     ->required()
                     ->searchable()
                     ->default(fn() => $this->drawSessionId)
+                    ->disableOptionWhen(function (string $value) use ($sessions) {
+                        $session = $sessions->find($value);
+                        if (!$session)
+                            return true;
+
+                        $now = now();
+                        $startedAt = \Carbon\Carbon::parse($session->started_at);
+                        $endedAt = \Carbon\Carbon::parse($session->ended_at);
+
+                        return $session->status !== DrawSession::STATUS_ACTIVE ||
+                            $now->lt($startedAt) ||
+                            $now->gt($endedAt);
+                    })
                     ->disabled(fn(): bool => ($this->winners != null && count($this->winners) == $this->eventPrize->remaining_quantity)),
                 Hidden::make('draw_session_id')
                     ->default(fn() => $this->drawSessionId)
@@ -472,11 +486,11 @@ class DrawWinnerBulk extends Page
                     'range_start' => $ticket['range_start'],
                     'range_end' => $ticket['range_end'],
                     'status' => Winner::STATUS_PENDING,
-                    'branch_id' => $participant['account']['branch_id'],
-                    'branch_code' => $participant['account']['branch_code'],
-                    'branch_name' => $participant['account']['branch_name'],
-                    'branch_company_book' => $participant['account']['branch_company_book'],
-                    'branch_region' => $participant['account']['branch_region'],
+                    'branch_id' => $winnerData['account']['branch']['id'],
+                    'branch_code' => $winnerData['account']['branch']['code'],
+                    'branch_name' => $winnerData['account']['branch']['branch_name'],
+                    'branch_company_book' => $winnerData['account']['branch']['company_book'],
+                    'branch_region' => $winnerData['account']['branch']['region'],
                 ]);
 
                 // Reduce remaining quantity

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use OwenIt\Auditing\Contracts\Auditable;
@@ -43,7 +44,10 @@ class Event extends Model implements Auditable
                     ->exists();
 
                 if ($activeEvent) {
-                    throw new \Exception('There is already an active event. Please complete the current active event before activating a new one.');
+                    Notification::make()
+                        ->title('There is already an active event. Please complete the current active event before activating a new one.')
+                        ->warning()
+                        ->send();
                 }
             }
         });
@@ -67,5 +71,22 @@ class Event extends Model implements Auditable
     public function prizes()
     {
         return $this->belongsToMany(Prize::class);
+    }
+
+    public function drawSessions()
+    {
+        return $this->hasMany(DrawSession::class);
+    }
+
+    public function winners()
+    {
+        return $this->hasManyThrough(
+            Winner::class,
+            DrawSession::class,
+            'event_id',
+            'draw_session_id',
+            'id',
+            'id'
+        );
     }
 }

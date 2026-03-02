@@ -48,7 +48,14 @@ class DocumentTable extends TableWidget
                         default => 'gray',
                     }),
                 IconColumn::make('has_stored_to_sftp')
+                    ->label('T24')
                     ->boolean(),
+                TextColumn::make('version')
+                    ->numeric()
+                    ->sortable(),
+                IconColumn::make('is_latest')
+                    ->boolean()
+                    ->label('Latest'),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable(),
@@ -65,15 +72,54 @@ class DocumentTable extends TableWidget
                     ->label('Download')
                     ->color('success')
                     ->action(function (AccountDocument $record) {
-                        $disk = Storage::disk('core_t24_sftp');
-                        $dataPdf = $disk->get($record?->file_path_t24);
-                        $filenamePdf = $record?->file_name_t24;
+                        try {
+                            $disk = Storage::disk('core_t24_sftp');
+                            $dataPdf = $disk->get($record?->file_path_t24);
+                            $filenamePdf = $record?->file_name_t24;
 
-                        return response()->streamDownload(function () use ($dataPdf, $filenamePdf) {
-                            echo $dataPdf;
-                        }, $filenamePdf, [
-                            'Content-Type' => 'application/pdf'
-                        ]);
+                            return response()->streamDownload(function () use ($dataPdf) {
+                                echo $dataPdf;
+                            }, $filenamePdf, [
+                                'Content-Type' => 'application/pdf'
+                            ]);
+                        } catch (\Exception $e) {
+                            \Filament\Notifications\Notification::make()
+                                ->title('Download Failed')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
+                Action::make('resend')
+                    ->icon('heroicon-o-paper-airplane')
+                    ->label('Resend')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->action(function (AccountDocument $record) {
+                        try {
+                            $service = app(\App\Services\BankStatementService::class);
+                            $success = $service->resend($record);
+
+                            if ($success) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Resend Successful')
+                                    ->body('E-statement has been regenerated and sent to T24 SFTP.')
+                                    ->success()
+                                    ->send();
+                            } else {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Resend Failed')
+                                    ->body('Could not send updated e-statement to SFTP.')
+                                    ->danger()
+                                    ->send();
+                            }
+                        } catch (\Exception $e) {
+                            \Filament\Notifications\Notification::make()
+                                ->title('Resend Error')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
                     }),
                 EditAction::make(),
                 DeleteAction::make(),

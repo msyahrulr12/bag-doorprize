@@ -68,6 +68,15 @@ class PointService
             }
 
             DB::commit();
+
+            // 3. Regenerate Bank Statement after point correction
+            try {
+                $bankStatementService = app(\App\Services\BankStatementService::class);
+                $bankStatementService->generateForAccount($accountId, now()->month, now()->year);
+            } catch (\Exception $e) {
+                Log::error("Bank Statement Generation Error after Point Correction: " . $e->getMessage());
+            }
+
             return true;
         } catch (\Exception $e) {
             DB::rollBack();

@@ -71,20 +71,20 @@ class ProcessPointHistoryCommand extends Command
             $currentDate = now()->subMonths($subMonth);
             $year = $currentDate->year;
             $month = $currentDate->month;
-            $lastMonth = $currentDate->lastOfMonth()->format('Y-m-d');
+            $startOfMonth = $currentDate->startOfMonth()->format('Y-m-d');
 
             // Init DB Core T24
             $dbT24 = DB::connection('db_core_t24');
 
             // Process NTB
-            $totalNtb = $dbT24->table('undian_ntb')->where('file_date', $lastMonth)->count();
+            $totalNtb = $dbT24->table('undian_ntb')->where('file_date', $startOfMonth)->count();
             $this->info("Found {$totalNtb} NTB records to process.");
             $barNtb = $this->output->createProgressBar($totalNtb);
             $barNtb->start();
 
             $dbT24
                 ->table('undian_ntb')
-                ->where('file_date', $lastMonth)
+                ->where('file_date', $startOfMonth)
                 ->orderBy('cif', 'asc')
                 ->chunk(500, function ($customers) use ($products, $branches, $month, $year, $settings, $eventId, $barNtb) {
                     ProcessPointHistory::dispatch(
@@ -103,14 +103,14 @@ class ProcessPointHistoryCommand extends Command
             $this->newLine(2);
 
             // Process ETB
-            $totalEtb = $dbT24->table('undian_etb')->where('file_date', $lastMonth)->count();
+            $totalEtb = $dbT24->table('undian_etb')->where('file_date', $startOfMonth)->count();
             $this->info("Found {$totalEtb} ETB records to process.");
             $barEtb = $this->output->createProgressBar($totalEtb);
             $barEtb->start();
 
             $dbT24
                 ->table('undian_etb')
-                ->where('file_date', $lastMonth)
+                ->where('file_date', $startOfMonth)
                 ->orderBy('cif', 'asc')
                 ->chunk(500, function ($customers) use ($products, $branches, $month, $year, $settings, $eventId, $barEtb) {
                     ProcessPointHistory::dispatch(

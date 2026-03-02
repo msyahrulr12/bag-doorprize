@@ -24,6 +24,8 @@ class AccountDocument extends Model implements Auditable
         'has_stored_to_sftp',
         'file_name_t24',
         'file_path_t24',
+        'version',
+        'is_latest',
     ];
 
     protected $casts = [
@@ -31,6 +33,7 @@ class AccountDocument extends Model implements Auditable
         'is_merged' => 'boolean',
         'metadata' => 'json',
         'has_stored_to_sftp' => 'boolean',
+        'is_latest' => 'boolean',
     ];
 
     public const STATUS_PENDING = 'PENDING';

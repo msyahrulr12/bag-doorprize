@@ -17,6 +17,8 @@ class ProcessPointHistory implements ShouldQueue
 {
     use Queueable;
 
+    public $timeout = 300;
+
     /**
      * Create a new job instance.
      */
@@ -206,34 +208,42 @@ class ProcessPointHistory implements ShouldQueue
             }
 
             $currentAmount = (float) (($customer['avgbal_tab'] ?? ($customer['avg_balance'] ?? 0)));
+            $hasPrevAmount = isset($previousAmounts[$accountId]);
             $prevAmount = (float) ($previousAmounts[$accountId] ?? 0);
             $growth = $currentAmount - $prevAmount;
 
-            $isNegativeTrend = ($growth < 0) && (abs($growth) > $thresholdReductionBalance);
             $type = PointHistory::POINT_TYPE_EARN;
             $typeText = "BERTAMBAH";
             $points = 0;
 
-            if ($isNegativeTrend) {
-                $participantId = $participants[$accountId]->id ?? null;
-                $points = $participantId ? -(($activeTicketPoints[$participantId] ?? 0)) : 0;
-                Log::info(sprintf("Account %s has negative growth (%s). Resetting points.", $accountNumber, $growth));
-                $type = PointHistory::POINT_TYPE_EXPIRED;
-                $typeText = "BERKURANG";
-                $accountsToReset[$accountId] = [
-                    'account_id' => $accountId,
-                    'type_text' => $typeText,
-                    'points' => $points,
-                    'account_number' => $accountNumber,
-                    'participant_id' => $participantId,
-                ];
-            } elseif ($growth > 0) {
-                $openingPoints = 0;
-                if ($this->type === 'ntb' && (float) ($customer['account_opening_balance'] ?? 0) >= ($this->settings['min_opening_balance'] ?? 500000)) {
-                    $openingPoints = (int) ($this->settings['base_point_ntb'] ?? 10);
+            // Rule: Calculate growth ONLY when prev month exists for the account.
+            // If prev month doesn't exist, it's base data month -> 0 points for ETB.
+            if ($this->type === 'etb' && !$hasPrevAmount) {
+                $points = 0;
+            } else {
+                $isNegativeTrend = ($growth < 0) && (abs($growth) > $thresholdReductionBalance);
+
+                if ($isNegativeTrend) {
+                    $participantId = $participants[$accountId]->id ?? null;
+                    $points = $participantId ? -(($activeTicketPoints[$participantId] ?? 0)) : 0;
+                    Log::info(sprintf("Account %s has negative growth (%s). Resetting points.", $accountNumber, $growth));
+                    $type = PointHistory::POINT_TYPE_EXPIRED;
+                    $typeText = "BERKURANG";
+                    $accountsToReset[$accountId] = [
+                        'account_id' => $accountId,
+                        'type_text' => $typeText,
+                        'points' => $points,
+                        'account_number' => $accountNumber,
+                        'participant_id' => $participantId,
+                    ];
+                } elseif ($growth > 0) {
+                    $openingPoints = 0;
+                    if ($this->type === 'ntb' && (float) ($customer['account_opening_balance'] ?? 0) >= ($this->settings['min_opening_balance'] ?? 500000)) {
+                        $openingPoints = (int) ($this->settings['base_point_ntb'] ?? 10);
+                    }
+                    $points = (int) floor($growth / $divider);
+                    $points = max(0, $points) + $openingPoints;
                 }
-                $points = (int) floor($growth / $divider);
-                $points = max(0, $points) + $openingPoints;
             }
 
             $pointHistories[] = [

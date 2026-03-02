@@ -53,10 +53,11 @@ class DrawSessionTable extends TableWidget
                 TextColumn::make('ended_at')
                     ->dateTime()
                     ->sortable(),
-                TextColumn::make('total_lottery_generated')
+                TextColumn::make('total_winners')
                     ->label('Total Winners')
                     ->numeric()
-                    ->sortable(),
+                    ->sortable()
+                    ->state(fn(DrawSession $record) => $record->winners()->count()),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()

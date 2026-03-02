@@ -15,33 +15,45 @@
      }" x-on:trigger-animation.window="
         drawing = true;
         showWinner = false;
-        number = 'XXXXXXXXX';
+        number = '000000000';
         
+        let startTime = Date.now();
+        counter = setInterval(() => {
+            let randomNum = '';
+            const chars = '0123456789';
+            for (let i = 0; i < 9; i++) {
+                randomNum += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            number = randomNum;
+        }, 50);
+
         $wire.performDraw().then(() => {
-            let index = 0;
-            const candidates = $wire.get('candidates');
             const pendingWinner = $wire.get('pendingWinner');
             
-            if (!pendingWinner || !candidates) {
+            if (!pendingWinner) {
+                clearInterval(counter);
                 drawing = false;
+                number = 'XXXXXXXXX';
                 return;
             }
 
             const finalLuckyNumber = pendingWinner.lucky_number;
             
-            counter = setInterval(() => {
-                if (candidates.length > 0) {
-                    number = candidates[index % candidates.length];
-                    index++;
-                }
-            }, 80);
+            // Continue randomizing for at least 3 seconds total
+            let elapsed = Date.now() - startTime;
+            let remaining = Math.max(0, 3000 - elapsed);
 
             setTimeout(() => {
                 clearInterval(counter);
                 number = finalLuckyNumber;
                 drawing = false;
                 $wire.finishDrawing();
-            }, 3000);
+            }, remaining);
+        }).catch(err => {
+            clearInterval(counter);
+            drawing = false;
+            number = 'XXXXXXXXX';
+            console.error('Drawing error:', err);
         });
      " x-on:winner-confirmed.window="showWinner = false; number = 'XXXXXXXXX';">
     <!-- Abstract Background -->

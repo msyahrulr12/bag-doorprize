@@ -101,6 +101,27 @@ class ProcessBulkDrawJob implements ShouldQueue
             $winners = [];
             $usedCustomerIds = [];
 
+            // 1.5 Fetch customers who are already in other active/completed batches for this event
+            // to avoid duplicates if multiple batches are drawn or pending confirmation
+            $otherBatches = \App\Models\BulkDrawBatch::whereHas('eventPrize', function ($q) use ($eventId) {
+                $q->where('event_id', $eventId);
+            })
+                ->whereIn('status', ['PENDING', 'PROCESSING', 'COMPLETED'])
+                ->where('id', '!=', $this->batchId)
+                ->get();
+
+            foreach ($otherBatches as $ob) {
+                if ($ob->results) {
+                    foreach ($ob->results as $result) {
+                        if (isset($result['customer']['id'])) {
+                            $usedCustomerIds[] = $result['customer']['id'];
+                        }
+                    }
+                }
+            }
+
+            $usedCustomerIds = array_unique($usedCustomerIds);
+
             // Group tickets by region for faster selection
             $regionGroups = $tickets->groupBy('region');
 

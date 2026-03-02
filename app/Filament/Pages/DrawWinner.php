@@ -75,19 +75,6 @@ class DrawWinner extends Page implements HasForms
 
         $this->checkDrawSession();
 
-        // $this->drawSessionId = DrawSession::where('event_id', $this->eventPrize->event_id)
-        //     ->where('status', DrawSession::STATUS_ACTIVE)
-        //     ->where('started_at', '<=', now())
-        //     ->where('ended_at', '>=', now())->first()?->id;
-
-        // if ($this->drawSessionId) {
-        //     // Find a default active draw session for this event if it exists
-        //     $defaultSession = DrawSession::where('event_id', $this->eventPrize->event_id)
-        //         ->where('status', DrawSession::STATUS_ACTIVE)
-        //         ->where('started_at', '<=', now())
-        //         ->where('ended_at', '>=', now())->first();
-        // }
-
         $this->form->fill([
             'draw_session_id' => $this->drawSessionId
         ]);
@@ -135,14 +122,29 @@ class DrawWinner extends Page implements HasForms
 
     public function form(Schema $schema): Schema
     {
+        $sessions = DrawSession::where('event_id', $this->eventPrize->event_id)->get();
+
         return $schema
             ->components([
                 Select::make('draw_session_id')
                     ->label('Draw Session')
-                    ->options(DrawSession::where('event_id', $this->eventPrize->event_id)->pluck('name', 'id'))
+                    ->options($sessions->pluck('name', 'id'))
                     ->required()
                     ->default(fn() => $this->drawSessionId)
-                    ->disabled(fn(): bool => $this->winner != null || $this->drawSessionId),
+                    ->disableOptionWhen(function (string $value) use ($sessions) {
+                        $session = $sessions->find($value);
+                        if (!$session)
+                            return true;
+
+                        $now = now();
+                        $startedAt = \Carbon\Carbon::parse($session->started_at);
+                        $endedAt = \Carbon\Carbon::parse($session->ended_at);
+
+                        return $session->status !== DrawSession::STATUS_ACTIVE ||
+                            $now->lt($startedAt) ||
+                            $now->gt($endedAt);
+                    })
+                    ->disabled(fn(): bool => $this->winner != null),
                 Hidden::make('draw_session_id')
                     ->default(fn() => $this->drawSessionId)
                     ->disabled(fn(): bool => $this->winner != null),
@@ -291,6 +293,21 @@ class DrawWinner extends Page implements HasForms
                 $q->whereDoesntHave('accounts.participants.winners', function ($wq) use ($eventId) {
                     $wq->whereHas('eventPrize', fn($eq) => $eq->where('event_prizes.event_id', $eventId));
                 });
+
+                // Customer must not be in any pending/processing bulk draw batches for this event
+                $pendingBatchCustomerIds = \App\Models\BulkDrawBatch::whereHas('eventPrize', fn($ep) => $ep->where('event_id', $eventId))
+                    ->whereIn('status', ['PENDING', 'PROCESSING', 'COMPLETED'])
+                    ->get()
+                    ->pluck('results')
+                    ->flatten(1)
+                    ->pluck('customer.id')
+                    ->unique()
+                    ->filter()
+                    ->toArray();
+
+                if (!empty($pendingBatchCustomerIds)) {
+                    $q->whereNotIn('customers.id', $pendingBatchCustomerIds);
+                }
             });
 
         if ($region) {
@@ -371,11 +388,11 @@ class DrawWinner extends Page implements HasForms
             'range_start' => $ticket->range_start,
             'range_end' => $ticket->range_end,
             'status' => Winner::STATUS_PENDING,
-            'branch_id' => $participant['account']['branch_id'],
-            'branch_code' => $participant['account']['branch_code'],
-            'branch_name' => $participant['account']['branch_name'],
-            'branch_company_book' => $participant['account']['branch_company_book'],
-            'branch_region' => $participant['account']['branch_region'],
+            'branch_id' => $participant->account->branch_id,
+            'branch_code' => $participant->account->branch->branch_code,
+            'branch_name' => $participant->account->branch->branch_name,
+            'branch_company_book' => $participant->account->branch->company_book,
+            'branch_region' => $participant->account->branch->region,
         ]);
 
         // Reduce remaining quantity

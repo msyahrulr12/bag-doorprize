@@ -15,7 +15,6 @@ class DrawSession extends Model implements Auditable
         'name',
         'started_at',
         'ended_at',
-        'total_lottery_generated',
         'status',
         'description',
     ];
@@ -31,5 +30,10 @@ class DrawSession extends Model implements Auditable
     public function event()
     {
         return $this->belongsTo(Event::class);
+    }
+
+    public function winners()
+    {
+        return $this->hasMany(Winner::class);
     }
 }

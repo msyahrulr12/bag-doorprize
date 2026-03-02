@@ -12,7 +12,7 @@ OCTANE_WORKERS?=4
 QUEUE_CONNECTION?=database
 QUEUE_NAMES?=tickets,imports,draws,reports,default
 
-.PHONY: help build package clean setup install deploy octane queue super-admin create-user-view
+.PHONY: help build package clean setup install deploy octane queue super-admin create-user-view supervisor
 
 help:
 	@echo "Offline Deployment Tool"
@@ -180,3 +180,37 @@ cron:
 clean:
 	rm -f $(PACKAGE_NAME)
 	@echo ">>> Cleaned up package files."
+
+supervisor:
+	@echo "Creating Supervisor configuration files..."
+	
+	@# Create laravel-octane.conf
+	@echo "[program:laravel-octane]\n\
+	process_name=%(program_name)s\n\
+	directory=$(PROJECT_DIR)\n\
+	command=php artisan octane:start --server=frankenphp --host=0.0.0.0 --port=8000 --workers=4\n\
+	autostart=true\n\
+	autorestart=true\n\
+	user=$(USER)\n\
+	redirect_stderr=true\n\
+	stdout_logfile=$(PROJECT_DIR)/storage/logs/octane.log" | sudo tee $(SUPERVISOR_CONF_PATH)/laravel-octane.conf > /dev/null
+
+	@# Create laravel-worker.conf
+	@echo "[program:laravel-worker]\n\
+	process_name=%(program_name)s_%(process_num)02d\n\
+	directory=$(PROJECT_DIR)\n\
+	command=php artisan queue:work --queue=tickets,imports,draws,reports,default --daemon --sleep=3 --tries=3 --max-time=3600\n\
+	autostart=true\n\
+	autorestart=true\n\
+	stopasgroup=true\n\
+	killasgroup=true\n\
+	user=$(USER)\n\
+	numprocs=8\n\
+	redirect_stderr=true\n\
+	stdout_logfile=$(PROJECT_DIR)/storage/logs/workers.log\n\
+	stopwaitsecs=3600" | sudo tee $(SUPERVISOR_CONF_PATH)/laravel-worker.conf > /dev/null
+
+	@echo "Rereading and updating Supervisor..."
+	sudo supervisorctl reread
+	sudo supervisorctl update
+	@echo "Supervisor configuration applied successfully."

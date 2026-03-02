@@ -76,19 +76,14 @@ class CustomersTable
                     ->preload(),
             ])
             ->recordActions([
-                // EditAction::make(),
                 ViewAction::make()
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    // DeleteBulkAction::make(),
-                    // ForceDeleteBulkAction::make(),
-                    // RestoreBulkAction::make(),
                 ]),
             ])
             ->headerActions([
                 ExportAction::make()->exporter(CustomerExporter::class),
-                ImportAction::make()->importer(CustomerImporter::class),
             ]);
     }
 }

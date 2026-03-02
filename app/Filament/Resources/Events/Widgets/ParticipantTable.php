@@ -34,27 +34,23 @@ class ParticipantTable extends TableWidget
         return $table
             ->deferLoading()
             ->query(function () {
-                if ($this->record->status == Event::STATUS_ACTIVE) {
-                    // For active events, use direct event_id filter
-                    $query = Participant::query()
-                        ->select('participants.*')
-                        ->with(['account.customer'])
-                        ->withCount('lotteryTickets');
+                $query = Participant::query()
+                    ->select('participants.*')
+                    ->with(['account.customer'])
+                    ->withCount('lotteryTickets');
 
-                    if ($this->record) {
+                if ($this->record) {
+                    if ($this->record->status == Event::STATUS_ACTIVE) {
+                        // For active events, use direct event_id filter
                         $query->where('event_id', $this->record->id);
+                    } else {
+                        // For inactive events, use the pivot table
+                        $query->whereIn('id', function ($subQuery) {
+                            $subQuery->select('participant_id')
+                                ->from('event_participant')
+                                ->where('event_id', $this->record->id);
+                        });
                     }
-                } else {
-                    // For inactive events, use the pivot table
-                    $query = Participant::query()
-                        ->select('participants.*')
-                        ->with(['account.customer'])
-                        ->withCount('lotteryTickets')
-                        ->whereIn('id', function ($subQuery) {
-                        $subQuery->select('participant_id')
-                            ->from('event_participant')
-                            ->where('event_id', $this->record->id);
-                    });
                 }
 
                 if (!empty($this->account_ids)) {
