@@ -2,23 +2,32 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\Branch;
 use App\Models\Customer;
-use App\Models\Event;
 use Filament\Pages\Page;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Concerns\InteractsWithForms;
-use Filament\Schemas\Schema;
-use Filament\Forms\Components\Select;
-use Filament\Schemas\Components\Tabs;
-use Filament\Schemas\Components\Tabs\Tab;
-use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Grid;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Table;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Actions\Action;
+use Filament\Actions\ExportAction;
 use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
+
+use Livewire\Attributes\On;
 
 class Reporting extends Page implements HasForms
 {
     use InteractsWithForms;
+
+    #[On('customerSelected')]
+    public function selectCustomer(int $customerId): void
+    {
+        $this->customerId = $customerId;
+        $this->showExport = false;
+    }
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-chart-bar';
     protected static string|UnitEnum|null $navigationGroup = 'Reports';
@@ -27,71 +36,41 @@ class Reporting extends Page implements HasForms
 
     protected string $view = 'filament.pages.reporting';
 
+    private $showExport = true;
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            ExportAction::make('export_full')
+                ->label('Export All Point Histories')
+                ->exporter(\App\Filament\Exports\PointHistoryFullExporter::class)
+                ->color('info')
+                ->icon('heroicon-o-document-arrow-down')
+                ->visible(fn() => $this->customerId === null),
+        ];
+    }
+
     public function getDescription(): ?string
     {
         return 'Comprehensive analytics and data tracking for Customers and Events.';
     }
 
-    public ?array $data = [];
-
     public ?int $customerId = null;
-    public ?int $eventId = null;
 
     public function mount(): void
     {
-        $this->form->fill();
+        $this->customerId = request()->query('customer_id');
     }
 
-    public function form(Schema $schema): Schema
+
+
+    public function resetCustomer(): void
     {
-        return $schema
-            ->components([
-                Tabs::make('Reporting Tabs')
-                    ->tabs([
-                        Tab::make('Customer Reporting')
-                            ->icon('heroicon-o-user')
-                            ->schema([
-                                Select::make('customer_id')
-                                    ->label('Select Customer')
-                                    ->searchable()
-                                    ->getSearchResultsUsing(fn(string $search): array => Customer::where('status', Customer::STATUS_ACTIVE)
-                                        ->where(function (Builder $builder) use ($search) {
-                                            $builder->where('name', 'ilike', "%{$search}%")
-                                                ->orWhere('cif', 'ilike', "%{$search}%");
-                                        })
-                                        ->whereIn('branch_id', auth()->user()->branches->pluck('id')->toArray())
-                                        ->limit(50)
-                                        ->pluck('name', 'id')
-                                        ->toArray())
-                                    ->getOptionLabelUsing(fn($value): ?string => Customer::find($value)?->name)
-                                    ->noSearchResultsMessage('No customers found.')
-                                    ->live()
-                                    ->afterStateUpdated(fn($state) => $this->customerId = $state),
-                            ]),
-                        Tab::make('Event Reporting')
-                            ->icon('heroicon-o-calendar')
-                            ->schema([
-                                Select::make('event_id')
-                                    ->label('Select Event')
-                                    ->searchable()
-                                    ->getSearchResultsUsing(fn(string $search): array => Event::where('event_name', 'ilike', "%{$search}%")
-                                        ->limit(50)
-                                        ->pluck('event_name', 'id')
-                                        ->toArray())
-                                    ->getOptionLabelUsing(fn($value): ?string => Event::find($value)?->event_name)
-                                    ->live()
-                                    ->afterStateUpdated(fn($state) => $this->eventId = $state),
-                            ]),
-                    ])
-                    ->persistTabInQueryString(),
-            ])
-            ->statePath('data');
+        $this->customerId = null;
     }
 
     protected function getHeaderWidgets(): array
     {
-        return [
-            // We can add widgets here, but we'll probably need to pass parameters to them
-        ];
+        return [];
     }
 }

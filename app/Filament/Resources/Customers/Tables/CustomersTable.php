@@ -3,20 +3,13 @@
 namespace App\Filament\Resources\Customers\Tables;
 
 use App\Filament\Exports\CustomerExporter;
-use App\Filament\Imports\CustomerImporter;
 use App\Models\Branch;
 use App\Models\Customer;
 use App\Models\LotteryTicket;
 use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
 use Filament\Actions\ExportAction;
-use Filament\Actions\ForceDeleteBulkAction;
-use Filament\Actions\ImportAction;
-use Filament\Actions\RestoreBulkAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
 use Filament\Tables\Table;
@@ -39,9 +32,6 @@ class CustomersTable
                     ->searchable(),
                 TextColumn::make('phone_number')
                     ->searchable(),
-                TextColumn::make('total_point_sum')
-                    ->numeric()
-                    ->sortable(),
                 TextColumn::make('redeemed_points')
                     ->numeric()
                     ->state(fn(Customer $record) => $record->accounts->flatMap->participants->flatMap->lotteryTickets->where('status', LotteryTicket::STATUS_ACTIVE)->sum('total_points'))

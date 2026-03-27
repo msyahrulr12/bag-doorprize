@@ -166,6 +166,7 @@ class BankStatementService
 
         if ($existingDoc) {
             $version = (int) ($existingDoc->version ?? 1) + 1;
+            $parsedMetaData = is_array($existingDoc->metadata) ? $existingDoc->metadata : json_decode($existingDoc->metadata, true);
             $existingDoc->update([
                 'version' => $version,
                 'is_latest' => true,
@@ -173,7 +174,7 @@ class BankStatementService
                 'filename' => $filename,
                 'has_stored_to_sftp' => false, // Set to false to trigger re-upload if needed
                 'period' => $currentDate->format('Y-m-d'),
-                'metadata' => array_merge(json_decode($existingDoc->metadata, true) ?? [], $data)
+                'metadata' => array_merge($parsedMetaData ?? [], $data)
             ]);
             return $existingDoc;
         } else {

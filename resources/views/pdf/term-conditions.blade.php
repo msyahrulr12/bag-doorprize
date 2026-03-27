@@ -330,7 +330,6 @@
         <!-- Simulation Table -->
         <div class="content-section">
             <div class="section-title">Simulasi Perhitungan Kupon</div>
-
             <table class="simulation-table">
                 <thead>
                     <tr>
@@ -410,7 +409,8 @@
         </div>
 
         <!-- Drawing Terms -->
-        <div class="content-section">
+        <div class="content-section"
+            style="page-break-before: always !important; display: block; border-top: 1px solid transparent;">
             <div class="section-title">Ketentuan Pengundian</div>
             <ul>
                 <li>Pengundian dilakukan menggunakan aplikasi pengundian, disaksikan dan disahkan oleh Dinas Sosial,

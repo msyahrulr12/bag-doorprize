@@ -28,7 +28,7 @@ class ChangePassword extends Page
     {
         $user = Filament::auth()->user();
         if (!$user->must_change_password) {
-            $this->redirect(Filament::getPanel()->getPath());
+            $this->redirect(Filament::getCurrentPanel()->getUrl());
             return;
         }
         $this->form->fill();
@@ -74,6 +74,6 @@ class ChangePassword extends Page
             ->success()
             ->send();
 
-        $this->redirect(Filament::getPanel()->getPath());
+        $this->redirect(Filament::getCurrentPanel()->getUrl());
     }
 }

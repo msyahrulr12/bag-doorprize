@@ -115,6 +115,7 @@ deploy:
 	php artisan route:cache
 	php artisan view:cache
 	php artisan event:cache
+	rm -f zstorage/app/public/bank-statements/term_conditions_temp.pdf
 	@echo ">>> Running Database Migrations..."
 	php artisan migrate --force --no-interaction
 	@echo ">>> Linking Storage..."
@@ -170,6 +171,7 @@ clear-cache:
 	php artisan view:clear
 	php artisan event:clear
 	php artisan cache:clear
+	rm -f storage/app/public/bank-statements/term_conditions_temp.pdf
 	@echo ">>> Cache cleared."
 
 cron:

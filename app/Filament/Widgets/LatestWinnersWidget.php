@@ -12,11 +12,25 @@ class LatestWinnersWidget extends BaseWidget
     protected static ?int $sort = 2;
     protected int|string|array $columnSpan = 'full';
 
+    public ?array $filters = [];
+
+    protected $listeners = ['updateFilters' => 'handleFilterUpdate'];
+
+    public function handleFilterUpdate($filters)
+    {
+        $this->filters = $filters;
+    }
+
     public function table(Table $table): Table
     {
         return $table
             ->query(
-                Winner::query()->latest('drawn_at')->limit(10)
+                fn() =>
+                Winner::query()
+                    ->when($this->filters['summary_branch_ids'] ?? [], fn($q, $ids) => $q->whereIn('branch_id', $ids))
+                    ->when($this->filters['summary_start_date'] ?? null, fn($q, $date) => $q->where('drawn_at', '>=', $date))
+                    ->when($this->filters['summary_end_date'] ?? null, fn($q, $date) => $q->where('drawn_at', '<=', $date))
+                    ->latest('drawn_at')->limit(10)
             )
             ->columns([
                 Tables\Columns\TextColumn::make('participant_name')

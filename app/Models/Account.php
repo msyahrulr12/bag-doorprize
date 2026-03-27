@@ -61,4 +61,9 @@ class Account extends Model implements Auditable
     {
         return $this->hasMany(Participant::class);
     }
+
+    public function lotteryTickets()
+    {
+        return $this->hasManyThrough(LotteryTicket::class, Participant::class);
+    }
 }

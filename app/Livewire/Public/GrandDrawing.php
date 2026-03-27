@@ -12,6 +12,9 @@ use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Livewire\Attributes\Computed;
+use App\Models\BulkDrawBatch;
+use App\Models\Participant;
+use Livewire\Attributes\Layout;
 use Livewire\Attributes\WithoutScrolling;
 
 #[WithoutScrolling]
@@ -62,21 +65,25 @@ class GrandDrawing extends Component
     private function checkWinner()
     {
         $this->isPreview = false;
-        $paginatedWinners = $this->paginatedWinners;
+        $paginatedWinners = $this->paginatedWinners();
 
         if ($paginatedWinners->count() > 0) {
             $firstWinner = $paginatedWinners->first();
             $firstWinner->load(['participant.account.branch', 'participant.account.customer']);
 
             $this->winner = [
+                'id' => $firstWinner->id,
                 'ticket' => $firstWinner->lotteryTicket?->toArray() ?? [],
                 'participant' => $firstWinner->participant?->toArray() ?? [],
                 'customer' => $firstWinner->participant?->account?->customer?->toArray() ?? [],
                 'lucky_number' => $firstWinner->winning_number,
-                'winning_number' => $firstWinner->winning_number,
+                'winning_number' => $firstWinner->range_start === $firstWinner->range_end
+                    ? $firstWinner->range_start
+                    : "{$firstWinner->range_start} - {$firstWinner->range_end}",
                 'draw_session_id' => $firstWinner->draw_session_id,
                 'branch_name' => $firstWinner->branch_name,
-                'region' => $firstWinner->branch_region
+                'region' => $firstWinner->branch_region,
+                'drawn_at' => $firstWinner->created_at->format('Y-m-d H:i:s'),
             ];
 
             // For the table display
@@ -86,6 +93,7 @@ class GrandDrawing extends Component
         }
 
         $this->winners = [];
+        $this->winner = null;
         return false;
     }
 
@@ -235,6 +243,11 @@ class GrandDrawing extends Component
         return $start;
     }
 
+    /**
+     * @param string|null $region
+     * @param int $eventId
+     * @return LotteryTicket|null
+     */
     private function findWinnerInRegion(?string $region, int $eventId): ?LotteryTicket
     {
         $query = LotteryTicket::query()
@@ -278,6 +291,7 @@ class GrandDrawing extends Component
 
         $currentOffset = 0;
         foreach ($tickets as $ticket) {
+            /** @var LotteryTicket $ticket */
             $currentOffset += $ticket->total_points;
             if ($winningOffset <= $currentOffset) {
                 return $ticket;
@@ -306,6 +320,11 @@ class GrandDrawing extends Component
         $participantId = $winnerData['participant']['id'] ?? null;
         $customerId = $winnerData['customer']['id'] ?? null;
 
+        if (!$participantId) {
+            $this->dispatch('error', message: "Invalid participant data.");
+            return;
+        }
+
         // Re-check customer eligibility one last time
         $alreadyWon = Winner::whereHas('eventPrize', fn($q) => $q->where('event_prizes.event_id', $this->eventPrize->event_id))
             ->whereHas('participant.account', fn($q) => $q->where('customer_id', $customerId))
@@ -317,13 +336,21 @@ class GrandDrawing extends Component
             return;
         }
 
+        $ticket = LotteryTicket::find($ticketId);
+        $participant = Participant::with('account.branch')->find($participantId);
+
+        if (!$participant) {
+            $this->dispatch('error', message: "Participant not found.");
+            return;
+        }
+
         Winner::create([
             'participant_id' => $participantId,
-            'participant_cif' => $winnerData['participant']['participant_cif'],
-            'participant_account_number' => $winnerData['participant']['participant_account_number'],
-            'participant_name' => $winnerData['participant']['participant_name'],
-            'participant_email' => $winnerData['participant']['participant_email'],
-            'participant_phone_number' => $winnerData['participant']['participant_phone_number'],
+            'participant_cif' => $participant->participant_cif,
+            'participant_account_number' => $participant->participant_account_number,
+            'participant_name' => $participant->participant_name,
+            'participant_email' => $participant->participant_email,
+            'participant_phone_number' => $participant->participant_phone_number,
             'event_prize_id' => $this->eventPrize->id,
             'prize_name' => $this->eventPrize->prize->prize_name,
             'prize_tier' => Prize::PRIZE_TIER[$this->eventPrize->prize->tier] ?? 'Common',
@@ -333,19 +360,19 @@ class GrandDrawing extends Component
             'event_code' => $this->eventPrize->event->event_code,
             'event_name' => $this->eventPrize->event->event_name,
             'draw_session_id' => $this->drawSessionId,
-            'winning_number' => $this->winner['lucky_number'],
+            'winning_number' => $winnerData['lucky_number'],
             'drawn_at' => now(),
             'drawn_by' => Auth::user()->name ?? 'Guest User',
             'lottery_ticket_id' => $ticketId,
-            'total_points' => $winnerData['ticket']['total_points'],
-            'range_start' => $winnerData['ticket']['range_start'],
-            'range_end' => $winnerData['ticket']['range_end'],
+            'total_points' => $ticket->total_points ?? 0,
+            'range_start' => $ticket->range_start ?? 'N/A',
+            'range_end' => $ticket->range_end ?? 'N/A',
             'status' => Winner::STATUS_PENDING,
-            'branch_id' => $winnerData['participant']['account']['branch_id'],
-            'branch_code' => $winnerData['participant']['account']['branch']['branch_code'],
-            'branch_name' => $winnerData['participant']['account']['branch']['branch_name'],
-            'branch_company_book' => $winnerData['participant']['account']['branch']['company_book'],
-            'branch_region' => $winnerData['participant']['account']['branch']['region'],
+            'branch_id' => $participant->account->branch_id,
+            'branch_code' => $participant->account->branch->branch_code,
+            'branch_name' => $participant->account->branch->branch_name,
+            'branch_company_book' => $participant->account->branch->company_book,
+            'branch_region' => $participant->account->branch->region,
         ]);
 
         $this->eventPrize->decrement('remaining_quantity');
@@ -357,9 +384,9 @@ class GrandDrawing extends Component
         $this->checkWinner();
     }
 
+    #[Layout('layouts.guest')]
     public function render()
     {
-        return view('livewire.public.grand-drawing')
-            ->layout('layouts.guest');
+        return view('livewire.public.grand-drawing');
     }
 }

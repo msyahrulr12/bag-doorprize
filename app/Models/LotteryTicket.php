@@ -20,6 +20,8 @@ class LotteryTicket extends Model implements Auditable
         'month',
         'year',
         'description',
+        'source',
+        'unique_key',
     ];
 
     public const STATUS_ACTIVE = 'ACTIVE';

@@ -12,10 +12,26 @@ class WinnerPrizeDistributionChart extends ChartWidget
     protected static ?int $sort = 4;
     protected ?string $maxHeight = '300px';
 
+    public ?array $filters = [];
+
+    protected $listeners = ['updateFilters' => 'handleFilterUpdate'];
+
+    public function handleFilterUpdate($filters)
+    {
+        $this->filters = $filters;
+    }
+
     protected function getData(): array
     {
+        $branchIds = $this->filters['summary_branch_ids'] ?? [];
+        $startDate = $this->filters['summary_start_date'] ?? null;
+        $endDate = $this->filters['summary_end_date'] ?? null;
+
         $data = Winner::query()
             ->select('prize_tier', DB::raw('count(*) as total'))
+            ->when($branchIds, fn($q, $ids) => $q->whereIn('branch_id', $ids))
+            ->when($startDate, fn($q, $date) => $q->where('drawn_at', '>=', $date))
+            ->when($endDate, fn($q, $date) => $q->where('drawn_at', '<=', $date))
             ->groupBy('prize_tier')
             ->pluck('total', 'prize_tier')
             ->toArray();

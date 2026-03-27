@@ -11,7 +11,7 @@ return new class extends Migration {
     public function up(): void
     {
         Schema::table('point_histories', function (Blueprint $table) {
-            // $table->dropUnique('unique_point_history_per_account_month_year');
+            $table->string('status')->nullable();
         });
     }
 
@@ -21,7 +21,7 @@ return new class extends Migration {
     public function down(): void
     {
         Schema::table('point_histories', function (Blueprint $table) {
-            // $table->unique('unique_point_history_per_account_month_year', ['account_id', 'month', 'year']);
+            $table->dropColumn('status');
         });
     }
 };

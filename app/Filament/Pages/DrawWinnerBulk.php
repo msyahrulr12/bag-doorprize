@@ -123,6 +123,8 @@ class DrawWinnerBulk extends Page
                 'account_number',
                 'name',
                 'region',
+                'branch_company_book',
+                'branch_name',
                 'winning_number',
                 'points',
                 'range_start',
@@ -136,6 +138,8 @@ class DrawWinnerBulk extends Page
                     $row['account']['account_number'] ?? '',
                     $row['name'] ?? '',
                     $row['region'] ?? '',
+                    $row['branch_company_book'] ?? '',
+                    $row['branch_name'] ?? '',
                     $row['lucky_number'] ?? $row['winning_number'] ?? '',
                     $row['ticket']['total_points'] ?? 0,
                     $row['ticket']['range_start'] ?? '',
@@ -245,13 +249,13 @@ class DrawWinnerBulk extends Page
                     ->default(fn() => $this->drawSessionId)
                     ->disabled(fn(): bool => ($this->winners != null && count($this->winners) == $this->eventPrize->remaining_quantity)),
                 TextInput::make('split_draw')
-                    ->label('Split Draw')
+                    ->label('Draw Quantity')
                     ->numeric()
+                    ->helperText('Number of winners to generate in this batch.')
                     ->required()
                     ->minValue(1)
-                    ->formatStateUsing(fn() => $this->eventPrize->split_draw)
-                    ->maxValue($this->eventPrize->remaining_quantity)
-                    ->default(fn() => $this->eventPrize->split_draw)
+                    ->maxValue(fn() => $this->eventPrize->remaining_quantity)
+                    ->default(fn() => min($this->eventPrize->remaining_quantity, $this->eventPrize->split_draw > 0 ? $this->eventPrize->split_draw : 10))
                     ->disabled(fn(): bool => (($this->winners != null || count($this->winners) > 0) && count($this->winners) == $this->eventPrize->remaining_quantity)),
             ])
             ->statePath('searchData');
@@ -313,8 +317,8 @@ class DrawWinnerBulk extends Page
         if ($batch && in_array($batch->status, ['PENDING', 'PROCESSING', 'COMPLETED'])) {
             $batch->update(['status' => 'CANCELLED']);
             $this->batchStatus = 'CANCELLED';
-            // $this->isStopping = true;
-            // $this->stopTriggeredAt = time();
+            $this->isStopping = true;
+            $this->stopTriggeredAt = time();
 
             Notification::make()
                 ->warning()
@@ -356,7 +360,7 @@ class DrawWinnerBulk extends Page
 
         if ($batch->status === 'COMPLETED' || $batch->status === 'CANCELLED') {
 
-            if ($batch->status === 'COMPLETED' && !$this->isStopping && !$this->stopTriggeredAt) {
+            if (($batch->status === 'COMPLETED' || $batch->status === 'CANCELLED') && !$this->isStopping && !$this->stopTriggeredAt) {
                 $this->stopTriggeredAt = time();
             }
 

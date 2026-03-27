@@ -13,12 +13,7 @@ use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use App\Models\Account;
 use App\Models\PointHistory;
-use App\Models\Participant;
 use App\Models\LotteryTicket;
-use App\Models\Event;
-use App\Models\Winner;
-use App\Utils\TicketHelper;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use UnitEnum;
 
@@ -45,12 +40,13 @@ class PointCorrection extends Page implements HasForms
         return $schema
             ->components([
                 Section::make('Customer & Point Adjustment')
-                    ->description('Adjust points for a customer account. This will automatically generate or subtract lottery tickets.')
+                    ->description('Adjust points for a customer account for a specific period. These corrections are cumulative and will be added to or subtracted from existing points.')
                     ->schema([
                         Select::make('account_id')
-                            ->label('Select Account')
+                            ->label('Account')
                             ->getSearchResultsUsing(
                                 fn(string $search): array => Account::query()
+                                    ->with(['customer', 'branch'])
                                     ->when(!auth()->user()->hasRole('super_admin'), function ($query) {
                                         $query->whereIn('branch_id', auth()->user()->branches->pluck('id'));
                                     })
@@ -65,14 +61,14 @@ class PointCorrection extends Page implements HasForms
                             )
                             ->afterStateUpdated(
                                 function ($state, $set) {
-                                    $account = Account::findOrFail($state);
-                                    $totalPoints = $account
-                                        ->participants
-                                        ->flatMap(fn($participant) => $participant->lotteryTickets)
-                                        ->where('status', LotteryTicket::STATUS_ACTIVE)
-                                        ->sum('total_points');
+                                    if (!$state) {
+                                        $set('current_points', 0);
+                                        return;
+                                    }
 
-                                    $set('current_points', $totalPoints);
+                                    $totalPoints = PointHistory::where('account_id', $state)->sum('points');
+
+                                    $set('current_points', (int) $totalPoints);
                                 }
                             )
                             ->getOptionLabelUsing(function ($value): ?string {
@@ -82,7 +78,6 @@ class PointCorrection extends Page implements HasForms
                             ->searchable()
                             ->required()
                             ->live(),
-
                         Select::make('type')
                             ->label('Adjustment Type')
                             ->options([
@@ -93,19 +88,19 @@ class PointCorrection extends Page implements HasForms
                             ->required(),
 
                         TextInput::make('current_points')
-                            ->label('Total Points in this Customer Account')
-                            ->helperText('This value will be converted into lottery tickets.')
+                            ->label('Current Points')
+                            ->helperText('Points found in this account.')
                             ->numeric()
-                            ->minValue(1)
+                            ->minValue(0)
                             ->required()
                             ->readOnly(true)
                             ->saved(false),
 
                         TextInput::make('points')
                             ->label('Total Points to Adjust')
-                            ->helperText('This value will be converted into lottery tickets.')
+                            ->helperText('Use 0 in Subtract mode to clear ALL active tickets.')
                             ->numeric()
-                            ->minValue(1)
+                            ->minValue(0)
                             ->required(),
 
                         Textarea::make('description')
@@ -116,6 +111,7 @@ class PointCorrection extends Page implements HasForms
             ])
             ->statePath('data');
     }
+
 
     public function submit()
     {
@@ -132,6 +128,8 @@ class PointCorrection extends Page implements HasForms
                 newData: $data,
                 originalData: [
                     'account' => Account::find($data['account_id'])?->account_number,
+                    'month' => $data['month'] ?? now()->month,
+                    'year' => $data['year'] ?? now()->year,
                     'type' => $data['type'],
                     'points' => $data['points'],
                     'description' => $data['description']

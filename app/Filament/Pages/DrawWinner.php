@@ -21,10 +21,15 @@ use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Auth;
 use BackedEnum;
 use Filament\Support\Icons\Heroicon;
+use Livewire\WithPagination;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\WithoutScrolling;
 
+#[WithoutScrolling]
 class DrawWinner extends Page implements HasForms
 {
     use InteractsWithForms;
+    use WithPagination;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::Gift;
     protected string $view = 'filament.pages.draw-winner';
@@ -36,6 +41,7 @@ class DrawWinner extends Page implements HasForms
 
     public ?array $searchData = [];
     public $winner = null;
+    public $winners = [];
 
     public ?bool $enableRedraw = false;
 
@@ -45,6 +51,13 @@ class DrawWinner extends Page implements HasForms
     public bool $isPreview = false;
     public bool $isDrawing = false;
     public $pendingWinner = null;
+    public $remainingQuantity = 0;
+
+    #[Computed]
+    public function paginatedWinners()
+    {
+        return Winner::where('event_prize_id', $this->eventPrizeId)->orderBy('id', 'desc')->paginate(30);
+    }
 
     public function __construct()
     {
@@ -72,6 +85,7 @@ class DrawWinner extends Page implements HasForms
 
         $this->eventPrize = EventPrize::with(['event', 'prize'])->findOrFail($this->eventPrizeId);
         $this->splitDraw = $this->eventPrize->split_draw;
+        $this->remainingQuantity = $eventPrize?->remaining_quantity;
 
         $this->checkDrawSession();
 
@@ -92,32 +106,53 @@ class DrawWinner extends Page implements HasForms
 
     private function checkWinner()
     {
-        $winnerExists = Winner::where('event_prize_id', $this->eventPrizeId)->first();
+        $this->isPreview = false;
+        $paginatedWinners = $this->paginatedWinners;
 
-        if ($winnerExists) {
-            if ($this->notifWinnerExists) {
+        if ($paginatedWinners->count() > 0) {
+            $winnerExists = $paginatedWinners->first();
+            $winnerExists->load(['participant.account.branch', 'participant.account.customer']);
+
+            if ($this->notifWinnerExists && !$this->winner) {
                 Notification::make()
-                    ->danger()
-                    ->title('Winner Already Exists')
-                    ->body("Winner for this event prize already exists.")
+                    ->info()
+                    ->title('Winners Found')
+                    ->body("There are already " . $paginatedWinners->total() . " winners recorded for this prize.")
                     ->send();
             }
 
-            $this->isPreview = false;
-            // Set winner for preview
+            // Set the most recent winner for the large card
             $this->winner = [
-                'ticket' => $winnerExists->ticket,
-                'participant' => $winnerExists->participant,
-                'customer' => $winnerExists->customer,
-                'lucky_number' => $winnerExists->lucky_number,
-                'winning_number' => $winnerExists->winning_number,
-                'draw_session_id' => $winnerExists->draw_session_id
+                'id' => $winnerExists->id,
+                'ticket' => $winnerExists->lotteryTicket?->toArray() ?? [],
+                'participant' => $winnerExists->participant,           // keep as Eloquent model — blade uses ->participant_name etc.
+                'customer' => $winnerExists->participant?->account?->customer, // keep as Eloquent model
+                'lucky_number' => $winnerExists->winning_number,
+                'winning_number' => $winnerExists->range_start === $winnerExists->range_end
+                    ? $winnerExists->range_start
+                    : "{$winnerExists->range_start} - {$winnerExists->range_end}",
+                'draw_session_id' => $winnerExists->draw_session_id,
+                'branch_name' => $winnerExists->branch_name,
+                'region' => $winnerExists->branch_region,
+                'drawn_at' => $winnerExists->created_at->format('Y-m-d H:i:s'),
             ];
+
+            // For the table display
+            $this->winners = collect($paginatedWinners->items())->map(fn(Winner $w) => $w->getDataBulk())->split(2)->toArray();
 
             return true;
         }
 
+        $this->winners = [];
         return false;
+    }
+
+    public function updatedPage()
+    {
+        if (!$this->isPreview) {
+            $this->checkWinner();
+            $this->dispatch('scroll-to-results');
+        }
     }
 
     public function form(Schema $schema): Schema
@@ -130,6 +165,8 @@ class DrawWinner extends Page implements HasForms
                     ->label('Draw Session')
                     ->options($sessions->pluck('name', 'id'))
                     ->required()
+                    ->searchable()
+                    ->helperText('Select the active drawing session for this event.')
                     ->default(fn() => $this->drawSessionId)
                     ->disableOptionWhen(function (string $value) use ($sessions) {
                         $session = $sessions->find($value);
@@ -144,12 +181,13 @@ class DrawWinner extends Page implements HasForms
                             $now->lt($startedAt) ||
                             $now->gt($endedAt);
                     })
-                    ->disabled(fn(): bool => $this->winner != null),
+                    ->disabled(fn(): bool => $this->winners >= $this?->eventPrize?->total_quantity),
                 Hidden::make('draw_session_id')
                     ->default(fn() => $this->drawSessionId)
-                    ->disabled(fn(): bool => $this->winner != null),
+                    ->disabled(fn(): bool => $this->winners >= $this?->eventPrize?->total_quantity),
                 TextInput::make('split_draw')
                     ->label('Split Draw')
+                    ->helperText('Number of winners to reveal together.')
                     ->numeric()
                     ->readOnly()
                     ->formatStateUsing(fn() => $this->eventPrize->split_draw)
@@ -254,7 +292,7 @@ class DrawWinner extends Page implements HasForms
             'winning_number' => $winnerTicket->range_start === $winnerTicket->range_end
                 ? $winnerTicket->range_start
                 : "{$winnerTicket->range_start} - {$winnerTicket->range_end}",
-            'draw_session_id' => $data['draw_session_id'],
+            'draw_session_id' => isset($data['draw_session_id']) ? $data['draw_session_id'] : $this->drawSessionId,
             'branch_name' => $participant->account->branch->branch_name ?? 'N/A',
             'region' => $participant->account->branch->region ?? 'N/A'
         ];
@@ -282,6 +320,11 @@ class DrawWinner extends Page implements HasForms
         }
     }
 
+    /**
+     * @param string|null $region
+     * @param int $eventId
+     * @return LotteryTicket|null
+     */
     private function findWinnerInRegion(?string $region, int $eventId): ?LotteryTicket
     {
         $query = LotteryTicket::query()
@@ -316,8 +359,24 @@ class DrawWinner extends Page implements HasForms
             });
         }
 
-        // Pick 1 random matching ticket
-        return $query->inRandomOrder()->first();
+        $tickets = $query->get();
+        if ($tickets->isEmpty())
+            return null;
+
+        // Weighted random selection based on total_points
+        $totalPoints = $tickets->sum('total_points');
+        $winningOffset = mt_rand(1, $totalPoints);
+
+        $currentOffset = 0;
+        foreach ($tickets as $ticket) {
+            /** @var LotteryTicket $ticket */
+            $currentOffset += $ticket->total_points;
+            if ($winningOffset <= $currentOffset) {
+                return $ticket;
+            }
+        }
+
+        return $tickets->first();
     }
 
     public function clearWinner()
@@ -342,15 +401,24 @@ class DrawWinner extends Page implements HasForms
             return;
         }
 
-        $ticket = $this->winner['ticket'];
-        $participant = $this->winner['participant'];
-        $customer = $this->winner['customer'];
-        $winningNumber = $this->winner['winning_number'];
-        $drawSessionId = $this->winner['draw_session_id'];
+        $winnerData = $this->winner;
+        $ticketId = $winnerData['ticket']['id'] ?? null;
+
+        // participant and customer may be Eloquent models (set by draw()) or arrays (set by checkWinner())
+        $participant = $winnerData['participant'];
+        $customer = $winnerData['customer'];
+
+        $participantId = is_array($participant) ? ($participant['id'] ?? null) : $participant?->id;
+        $customerId = is_array($customer) ? ($customer['id'] ?? null) : $customer?->id;
+
+        if (!$participantId) {
+            Notification::make()->danger()->title('Invalid participant data.')->send();
+            return;
+        }
 
         // Re-check customer eligibility one last time
         $alreadyWon = Winner::whereHas('eventPrize', fn($q) => $q->where('event_prizes.event_id', $this->eventPrize->event_id))
-            ->whereHas('participant.account', fn($q) => $q->where('customer_id', $customer->id))
+            ->whereHas('participant.account', fn($q) => $q->where('customer_id', $customerId))
             ->exists();
 
         if ($alreadyWon) {
@@ -363,9 +431,17 @@ class DrawWinner extends Page implements HasForms
             return;
         }
 
+        $ticket = LotteryTicket::find($ticketId);
+        $participant = Participant::with('account.branch')->find($participantId);
+
+        if (!$participant) {
+            Notification::make()->danger()->title('Participant not found.')->send();
+            return;
+        }
+
         // Create Winner record
         Winner::create([
-            'participant_id' => $participant->id,
+            'participant_id' => $participantId,
             'participant_cif' => $participant->participant_cif,
             'participant_account_number' => $participant->participant_account_number,
             'participant_name' => $participant->participant_name,
@@ -379,14 +455,14 @@ class DrawWinner extends Page implements HasForms
             'prize_description' => $this->eventPrize->prize->description,
             'event_code' => $this->eventPrize->event->event_code,
             'event_name' => $this->eventPrize->event->event_name,
-            'draw_session_id' => $drawSessionId,
-            'winning_number' => $winningNumber,
+            'draw_session_id' => $winnerData['draw_session_id'] ?? $this->drawSessionId,
+            'winning_number' => $winnerData['lucky_number'],
             'drawn_at' => now(),
             'drawn_by' => Auth::user()->name ?? 'System',
-            'lottery_ticket_id' => $ticket->id,
-            'total_points' => $ticket->total_points,
-            'range_start' => $ticket->range_start,
-            'range_end' => $ticket->range_end,
+            'lottery_ticket_id' => $ticketId,
+            'total_points' => $ticket->total_points ?? 0,
+            'range_start' => $ticket->range_start ?? 'N/A',
+            'range_end' => $ticket->range_end ?? 'N/A',
             'status' => Winner::STATUS_PENDING,
             'branch_id' => $participant->account->branch_id,
             'branch_code' => $participant->account->branch->branch_code,
@@ -406,8 +482,7 @@ class DrawWinner extends Page implements HasForms
 
         $this->winner = null;
         $this->isPreview = false;
-        $this->form->fill([
-            'draw_session_id' => $drawSessionId
-        ]);
+        $this->notifWinnerExists = false;
+        $this->checkWinner();
     }
 }

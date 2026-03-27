@@ -23,6 +23,8 @@ class PointService
         $type = $data['type'];
         $points = (int) $data['points'];
         $description = $data['description'];
+        $month = $data['month'] ?? now()->month;
+        $year = $data['year'] ?? now()->year;
 
         $account = Account::findOrFail($accountId);
         $activeEvent = Event::where('status', Event::STATUS_ACTIVE)->first();
@@ -37,11 +39,12 @@ class PointService
             PointHistory::create([
                 'account_id' => $accountId,
                 'amount' => $account->current_balance,
-                'month' => now()->month,
-                'year' => now()->year,
+                'month' => $month,
+                'year' => $year,
                 'points' => $type === PointHistory::POINT_TYPE_EARN ? $points : -$points,
                 'type' => $type,
-                'description' => "[Correction] " . $description,
+                'description' => "[Correction REK ({$accountId})] " . $description,
+                'source' => 'MANUAL',
             ]);
 
             // 2. Find Participant
@@ -62,9 +65,11 @@ class PointService
             }
 
             if ($type === PointHistory::POINT_TYPE_EARN) {
-                $this->processEarn($participant, $activeEvent, $points, $description);
+                if ($points > 0) {
+                    $this->processEarn($participant, $activeEvent, $points, $description, $month, $year);
+                }
             } else {
-                $this->processExpired($participant, $activeEvent, $points, $description);
+                $this->processExpired($participant, $activeEvent, $points, $description, $month, $year);
             }
 
             DB::commit();
@@ -72,7 +77,7 @@ class PointService
             // 3. Regenerate Bank Statement after point correction
             try {
                 $bankStatementService = app(\App\Services\BankStatementService::class);
-                $bankStatementService->generateForAccount($accountId, now()->month, now()->year);
+                $bankStatementService->generateForAccount($accountId, $month, $year);
             } catch (\Exception $e) {
                 Log::error("Bank Statement Generation Error after Point Correction: " . $e->getMessage());
             }
@@ -85,7 +90,7 @@ class PointService
         }
     }
 
-    private function processEarn($participant, $event, $points, $description)
+    private function processEarn($participant, $event, $points, $description, $month, $year)
     {
         $startTicketNumber = DB::transaction(function () use ($event, $points) {
             $eventRecord = Event::where('id', $event->id)->lockForUpdate()->first();
@@ -98,59 +103,108 @@ class PointService
         $rangeStart = TicketHelper::format($startTicketNumber);
         $rangeEnd = TicketHelper::format($startTicketNumber + $points - 1);
 
+        $accountNumber = $participant->participant_account_number;
+
         LotteryTicket::create([
             'event_id' => $event->id,
             'participant_id' => $participant->id,
-            'month' => now()->month,
-            'year' => now()->year,
+            'month' => $month,
+            'year' => $year,
             'total_points' => $points,
             'range_start' => $rangeStart,
             'range_end' => $rangeEnd,
             'status' => LotteryTicket::STATUS_ACTIVE,
-            'description' => "[Correction EARN] " . $description,
+            'description' => "[Correction EARN REK ({{$accountNumber}})] " . $description,
+            'source' => 'MANUAL',
         ]);
     }
 
-    private function processExpired($participant, $event, $pointsToSubtract, $description)
+    private function processExpired($participant, $event, $pointsToSubtract, $description, $month = null, $year = null)
     {
+        // If pointsToSubtract is 0, we can Interpretation as "Remove ALL points/tickets" 
+        // But for "many times correction", we probably want to support fractional subtractions.
+        $removeAll = ($pointsToSubtract === 0);
+        $remaining = $removeAll ? PHP_INT_MAX : $pointsToSubtract;
+
+        if (!$removeAll && $remaining <= 0) {
+            return;
+        }
+
+        /** @var \Illuminate\Database\Eloquent\Collection<int, \App\Models\LotteryTicket> $tickets */
         $tickets = LotteryTicket::where('participant_id', $participant->id)
             ->where('event_id', $event->id)
+            // ->when($month && $year, fn($q) => $q->where('month', $month)->where('year', $year))
             ->where('status', LotteryTicket::STATUS_ACTIVE)
             ->orderBy('id', 'desc')
             ->get();
 
-        $remaining = $pointsToSubtract;
-
         foreach ($tickets as $ticket) {
-            if ($remaining <= 0)
+            if (!$removeAll && $remaining <= 0) {
                 break;
-
-            $isWinner = Winner::where('lottery_ticket_id', $ticket->id)->exists();
-            if ($isWinner)
-                continue;
+            }
 
             $currentPoints = $ticket->total_points;
+            $winner = Winner::where('lottery_ticket_id', $ticket->id)->first();
 
-            if ($currentPoints <= $remaining) {
-                $remaining -= $currentPoints;
-                $ticket->delete();
+            if ($removeAll || $currentPoints <= $remaining) {
+                // This ticket can be fully removed or its points are less than or equal to remaining
+                if ($winner) {
+                    if ($removeAll) {
+                        // If removing all, cancel winner and delete ticket
+                        $winner->update(['status' => Winner::STATUS_CANCELED]);
+                        $ticket->delete();
+                        $remaining -= $currentPoints; // Account for points removed
+                    } else {
+                        // If not removing all, and it's a winner, keep at least 1 point
+                        $possibleToTake = $currentPoints - 1;
+                        if ($possibleToTake > 0) {
+                            $this->reduceTicketRange($ticket, $possibleToTake, $winner);
+                            $remaining -= $possibleToTake;
+                        }
+                    }
+                } else {
+                    // No winner, just delete the ticket
+                    $remaining -= $currentPoints;
+                    $ticket->delete();
+                }
             } else {
-                $newPoints = $currentPoints - $remaining;
-                $startInt = TicketHelper::parse($ticket->range_start);
-                $newEndInt = $startInt + $newPoints - 1;
-
-                $ticket->update([
-                    'total_points' => $newPoints,
-                    'range_end' => TicketHelper::format($newEndInt),
-                    'description' => $ticket->description . " (Corrected: -$remaining points)"
-                ]);
-
+                // This ticket has more points than we need to subtract, so partially reduce it
+                $this->reduceTicketRange($ticket, $remaining, $winner);
                 $remaining = 0;
             }
         }
+    }
 
-        if ($remaining > 0) {
-            throw new \Exception("Could not subtract all points. Remaining: $remaining points (Winner tickets were skipped).");
+    private function reduceTicketRange($ticket, $pointsToRemove, $winner = null)
+    {
+        if ($pointsToRemove <= 0)
+            return;
+
+        $startInt = TicketHelper::parse($ticket->range_start);
+        $endInt = TicketHelper::parse($ticket->range_end);
+
+        if ($winner) {
+            $winningNumInt = TicketHelper::parse($winner->winning_number);
+
+            // Check if removing from the end hits the winner
+            if ($winningNumInt > ($endInt - $pointsToRemove)) {
+                // Hits winner! Remove from the start (first range) instead.
+                $newStartInt = $startInt + $pointsToRemove;
+                $ticket->update([
+                    'total_points' => $ticket->total_points - $pointsToRemove,
+                    'range_start' => TicketHelper::format($newStartInt),
+                    'description' => $ticket->description . " (Corrected START: -$pointsToRemove)"
+                ]);
+                return;
+            }
         }
+
+        // Default: remove from end
+        $newEndInt = $endInt - $pointsToRemove;
+        $ticket->update([
+            'total_points' => $ticket->total_points - $pointsToRemove,
+            'range_end' => TicketHelper::format($newEndInt),
+            'description' => $ticket->description . " (Corrected END: -$pointsToRemove)"
+        ]);
     }
 }

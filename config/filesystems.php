@@ -73,15 +73,15 @@ return [
             // 'passphrase' => env('CORE_T24_SFTP_PASSPHRASE'),
 
             // Settings for file / directory permissions...
-            'visibility' => 'private', // `private` = 0600, `public` = 0644
-            'directory_visibility' => 'private', // `private` = 0700, `public` = 0755
+            'visibility' => env('CORE_T24_SFTP_VISIBILITY', 'private'), // `private` = 0600, `public` = 0644
+            'directory_visibility' => env('CORE_T24_SFTP_DIR_VISIBILITY', 'private'), // `private` = 0700, `public` = 0755
 
             // Optional SFTP Settings...
             // 'hostFingerprint' => env('SFTP_HOST_FINGERPRINT'),
             // 'maxTries' => 4,
             // 'passphrase' => env('SFTP_PASSPHRASE'),
             'port' => (int) env('CORE_T24_SFTP_PORT', 22),
-            // 'root' => env('SFTP_ROOT', ''),
+            'root' => env('CORE_T24_SFTP_ROOT', ''),
             // 'timeout' => 45,
             // 'useAgent' => true,
         ],

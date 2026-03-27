@@ -27,7 +27,7 @@ class DrawSessionTable extends TableWidget
     {
         return $table
             ->query(function () {
-                $query = DrawSession::query()->orderBy('started_at', 'asc');
+                $query = DrawSession::query()->withCount('winners')->orderBy('started_at', 'asc');
                 if ($this->record) {
                     $query->where('event_id', $this->record->id);
                 } elseif ($this->event_id) {
@@ -53,11 +53,10 @@ class DrawSessionTable extends TableWidget
                 TextColumn::make('ended_at')
                     ->dateTime()
                     ->sortable(),
-                TextColumn::make('total_winners')
+                TextColumn::make('winners_count')
                     ->label('Total Winners')
                     ->numeric()
-                    ->sortable()
-                    ->state(fn(DrawSession $record) => $record->winners()->count()),
+                    ->sortable(),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()

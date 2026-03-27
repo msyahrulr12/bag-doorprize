@@ -41,7 +41,7 @@ class AppServiceProvider extends ServiceProvider
                 $livewire = method_exists($action, 'getLivewire') ? $action->getLivewire() : null;
 
                 // If it's a table action but getLivewire returns table/container
-                if (method_exists($action, 'getTable')) {
+                if (method_exists($action, 'getTable') && $action->getTable()) {
                     $livewire = $action->getTable()->getLivewire();
                 }
 

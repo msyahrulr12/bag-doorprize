@@ -52,9 +52,11 @@ class ProcessPointHistoryCommand extends Command
             $this->info('Starting import process...');
             $this->newLine();
 
-            // Pre-load products, branches once
-            $products = Product::pluck('id', 'kode_produk')->toArray();
-            $branches = Branch::pluck('id', 'company_book')->toArray();
+            // Pre-load products, branches once.
+            // Keys are trimmed to guard against leading/trailing whitespace in the DB values
+            // that would cause array lookups to miss (e.g. 'ID0019999 ' vs 'ID0019999').
+            $products = collect(Product::pluck('id', 'kode_produk'))->mapWithKeys(fn($id, $key) => [trim($key) => $id])->toArray();
+            $branches = collect(Branch::pluck('id', 'company_book'))->mapWithKeys(fn($id, $key) => [trim($key) => $id])->toArray();
 
             // Get active event
             $event = Event::where('status', Event::STATUS_ACTIVE)->first();
@@ -71,20 +73,21 @@ class ProcessPointHistoryCommand extends Command
             $currentDate = now()->subMonths($subMonth);
             $year = $currentDate->year;
             $month = $currentDate->month;
-            $startOfMonth = $currentDate->startOfMonth()->format('Y-m-d');
+            $endOfMonth = $currentDate->endOfMonth()->format('Y-m-d');
 
             // Init DB Core T24
             $dbT24 = DB::connection('db_core_t24');
+            $tableNtb = env('DB_CORE_T24_TABLE_NTB', 'undian_ntb');
 
             // Process NTB
-            $totalNtb = $dbT24->table('undian_ntb')->where('file_date', $startOfMonth)->count();
+            $totalNtb = $dbT24->table($tableNtb)->where('file_date', $endOfMonth)->count();
             $this->info("Found {$totalNtb} NTB records to process.");
             $barNtb = $this->output->createProgressBar($totalNtb);
             $barNtb->start();
 
             $dbT24
-                ->table('undian_ntb')
-                ->where('file_date', $startOfMonth)
+                ->table($tableNtb)
+                ->where('file_date', $endOfMonth)
                 ->orderBy('cif', 'asc')
                 ->chunk(500, function ($customers) use ($products, $branches, $month, $year, $settings, $eventId, $barNtb) {
                     ProcessPointHistory::dispatch(
@@ -103,14 +106,15 @@ class ProcessPointHistoryCommand extends Command
             $this->newLine(2);
 
             // Process ETB
-            $totalEtb = $dbT24->table('undian_etb')->where('file_date', $startOfMonth)->count();
+            $tableEtb = env('DB_CORE_T24_TABLE_ETB', 'undian_etb');
+            $totalEtb = $dbT24->table($tableEtb)->where('file_date', $endOfMonth)->count();
             $this->info("Found {$totalEtb} ETB records to process.");
             $barEtb = $this->output->createProgressBar($totalEtb);
             $barEtb->start();
 
             $dbT24
-                ->table('undian_etb')
-                ->where('file_date', $startOfMonth)
+                ->table($tableEtb)
+                ->where('file_date', $endOfMonth)
                 ->orderBy('cif', 'asc')
                 ->chunk(500, function ($customers) use ($products, $branches, $month, $year, $settings, $eventId, $barEtb) {
                     ProcessPointHistory::dispatch(

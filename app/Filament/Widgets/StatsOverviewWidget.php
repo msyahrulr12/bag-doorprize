@@ -13,12 +13,27 @@ class StatsOverviewWidget extends BaseWidget
 {
     protected ?string $pollingInterval = '30s';
 
+    public ?array $filters = [];
+
+    protected $listeners = ['updateFilters' => 'handleFilterUpdate'];
+
+    public function handleFilterUpdate($filters)
+    {
+        $this->filters = $filters;
+    }
+
     protected function getStats(): array
     {
+        $branchIds = $this->filters['summary_branch_ids'] ?? [];
+        $startDate = $this->filters['summary_start_date'] ?? null;
+        $endDate = $this->filters['summary_end_date'] ?? null;
+
         $activeEvent = Event::where('status', Event::STATUS_ACTIVE)->first();
 
         return [
-            Stat::make('Total Customers', Customer::count())
+            Stat::make('Total Customers', Customer::query()
+                ->when($branchIds, fn($q) => $q->whereIn('branch_id', $branchIds))
+                ->count())
                 ->description('Total registered CIF')
                 ->descriptionIcon('heroicon-m-users')
                 ->color('primary'),
@@ -28,13 +43,30 @@ class StatsOverviewWidget extends BaseWidget
                 ->descriptionIcon('heroicon-m-calendar')
                 ->color($activeEvent ? 'success' : 'danger'),
 
-            Stat::make('Total active Tickets', $activeEvent ? number_format(LotteryTicket::where('event_id', $activeEvent->id)->where('status', LotteryTicket::STATUS_ACTIVE)->sum('total_points')) : 0)
+            Stat::make('Total active Tickets', $activeEvent ? number_format(LotteryTicket::query()
+                ->where('event_id', $activeEvent->id)
+                ->where('status', LotteryTicket::STATUS_ACTIVE)
+                ->when($branchIds, fn($q) => $q->whereHas('participant.account', fn($sq) => $sq->whereIn('branch_id', $branchIds)))
+                ->when($startDate, function ($q, $date) {
+                    $start = \Carbon\Carbon::parse($date);
+                    return $q->where(fn($sq) => $sq->where('year', '>', $start->year)->orWhere(fn($ssq) => $ssq->where('year', $start->year)->where('month', '>=', $start->month)));
+                })
+                ->when($endDate, function ($q, $date) {
+                    $end = \Carbon\Carbon::parse($date);
+                    return $q->where(fn($sq) => $sq->where('year', '<', $end->year)->orWhere(fn($ssq) => $ssq->where('year', $end->year)->where('month', '<=', $end->month)));
+                })
+                ->sum('total_points')) : 0)
                 ->description('Total issued coupons')
                 ->descriptionIcon('heroicon-m-ticket')
                 ->chart([7, 2, 10, 3, 15, 4, 17])
                 ->color('warning'),
 
-            Stat::make('Total Winners', $activeEvent ? Winner::whereHas('eventPrize', fn($q) => $q->where('event_id', $activeEvent->id))->count() : 0)
+            Stat::make('Total Winners', $activeEvent ? Winner::query()
+                ->whereHas('eventPrize', fn($q) => $q->where('event_id', $activeEvent->id))
+                ->when($branchIds, fn($q) => $q->whereIn('branch_id', $branchIds))
+                ->when($startDate, fn($q, $date) => $q->where('drawn_at', '>=', $date))
+                ->when($endDate, fn($q, $date) => $q->where('drawn_at', '<=', $date))
+                ->count() : 0)
                 ->description('Winners for active event')
                 ->descriptionIcon('heroicon-m-trophy')
                 ->color('success'),

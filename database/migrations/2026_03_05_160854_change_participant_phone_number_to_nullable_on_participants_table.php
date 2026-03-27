@@ -10,8 +10,8 @@ return new class extends Migration {
      */
     public function up(): void
     {
-        Schema::table('point_histories', function (Blueprint $table) {
-            // $table->dropUnique('unique_point_history_per_account_month_year');
+        Schema::table('participants', function (Blueprint $table) {
+            $table->string('participant_phone_number')->nullable()->change();
         });
     }
 
@@ -20,8 +20,8 @@ return new class extends Migration {
      */
     public function down(): void
     {
-        Schema::table('point_histories', function (Blueprint $table) {
-            // $table->unique('unique_point_history_per_account_month_year', ['account_id', 'month', 'year']);
+        Schema::table('participants', function (Blueprint $table) {
+            //
         });
     }
 };

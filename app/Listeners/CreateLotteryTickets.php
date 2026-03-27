@@ -3,42 +3,39 @@
 namespace App\Listeners;
 
 use App\Events\PointHistoryProcessed;
+use App\Models\Event;
 use App\Models\LotteryTicket;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Queue\InteractsWithQueue;
-use Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class CreateLotteryTickets implements ShouldQueue
 {
     public $queue = 'tickets';
 
     /**
-     * Create the event listener.
-     */
-    public function __construct()
-    {
-        //
-    }
-
-    /**
      * Handle the event.
      */
     public function handle(PointHistoryProcessed $event): void
     {
-        Log::info('Processing Create Lottery Tickets');
-        $pointHistoriesRaw = $event->pointHistories;
+        $pointHistories = $event->pointHistories;
         $participantMap = $event->participantMap;
         $eventId = $event->eventId;
+        $month = $event->month;
+        $year = $event->year;
 
-        // 1. Prepare data and calculate total points for this chunk
+        // 1. Calculate total points in this chunk
+        $validPoints = [];
         $totalPointsInChunk = 0;
-        $pointsMap = [];
-        $descriptionMap = [];
-        foreach ($pointHistoriesRaw as $ph) {
+        foreach ($pointHistories as $ph) {
             if (isset($ph['points']) && $ph['points'] > 0) {
-                $totalPointsInChunk += $ph['points'];
-                $pointsMap[$ph['account_id']] = $ph['points'];
-                $descriptionMap[$ph['account_id']] = $ph['description'];
+                $accId = $ph['account_id'];
+                $validPoints[$accId] = [
+                    'points' => (int) $ph['points'],
+                    'description' => $ph['description'],
+                    'source' => $ph['source'] ?? 'SYSTEM'
+                ];
+                $totalPointsInChunk += (int) $ph['points'];
             }
         }
 
@@ -46,52 +43,56 @@ class CreateLotteryTickets implements ShouldQueue
             return;
         }
 
-        // 2. Atomic reservation of the ticket number range
-        // Using lockForUpdate to prevent race conditions during the counter increment
-        $startTicketNumber = \DB::transaction(function () use ($eventId, $totalPointsInChunk) {
-            $eventRecord = \App\Models\Event::where('id', $eventId)
-                ->lockForUpdate()
-                ->first();
-
+        // 2. Reserved ticket range (Atomic)
+        // Multiple chunks will queue here for the event lock. 
+        // We use a small transaction to keep lock time minimal.
+        $startTicketNumber = DB::transaction(function () use ($eventId, $totalPointsInChunk) {
+            $eventRecord = Event::where('id', $eventId)->lockForUpdate()->first();
             $currentLast = (int) ($eventRecord->last_ticket_number ?? 0);
-            $newLast = $currentLast + $totalPointsInChunk;
-
-            $eventRecord->update(['last_ticket_number' => $newLast]);
-
+            $eventRecord->update(['last_ticket_number' => $currentLast + $totalPointsInChunk]);
             return $currentLast;
         });
 
-        // 3. Assign tickets within the reserved range
+        // 3. Prepare Batch Upsert
         $currentNumber = $startTicketNumber;
+        $upserts = [];
+        $now = now();
+
         foreach ($participantMap as $accountId => $participantId) {
-            Log::info('Assigning ticket with the reserved range: ' . $participantId);
-            $points = $pointsMap[$accountId] ?? 0;
-            if ($points <= 0) {
+            $data = $validPoints[$accountId] ?? null;
+            if (!$data)
                 continue;
-            }
 
-            // Calculate formatted range (Step Id: 399 logic)
-            $range_start = chr(65 + intdiv($currentNumber, 99999999)) .
-                str_pad($currentNumber % 99999999 + 1, 8, '0', STR_PAD_LEFT);
+            $points = $data['points'];
 
+            // Format start/end
+            $range_start = \App\Utils\TicketHelper::format($currentNumber);
             $currentNumber += $points;
+            $range_end = \App\Utils\TicketHelper::format($currentNumber - 1);
 
-            $range_end = chr(65 + intdiv($currentNumber - 1, 99999999)) .
-                str_pad(($currentNumber - 1) % 99999999 + 1, 8, '0', STR_PAD_LEFT);
-
-            LotteryTicket::updateOrCreate([
+            $uniqueKey = "lt_sys_{$eventId}_{$participantId}_{$month}_{$year}";
+            $upserts[] = [
                 'event_id' => $eventId,
                 'participant_id' => $participantId,
-                'month' => $event->month,
-                'year' => $event->year,
-            ], [
+                'month' => $month,
+                'year' => $year,
                 'total_points' => $points,
                 'range_start' => $range_start,
                 'range_end' => $range_end,
                 'status' => LotteryTicket::STATUS_ACTIVE,
-                'description' => $descriptionMap[$accountId],
-                'updated_at' => now(),
-            ]);
+                'description' => $data['description'],
+                'source' => $data['source'],
+                'unique_key' => $uniqueKey,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
         }
+
+        if (!empty($upserts)) {
+            // High speed upsert using the unique_key column
+            LotteryTicket::upsert($upserts, ['unique_key'], ['total_points', 'range_start', 'range_end', 'status', 'description', 'updated_at']);
+        }
+
+        Log::info(sprintf('✓ Assigned %d points to %d participants (Reserved Range: %d to %d)', $totalPointsInChunk, count($upserts), $startTicketNumber, $currentNumber - 1));
     }
 }

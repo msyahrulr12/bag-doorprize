@@ -97,7 +97,7 @@ class BulkDrawing extends Component
             return;
         }
 
-        $totalWinners = $this->eventPrize?->split_draw > 0 ? $this->eventPrize->split_draw : $remainingQuantity;
+        $totalWinners = $this->eventPrize?->split_draw > 0 && $this->eventPrize?->split_draw <= $remainingQuantity ? $this->eventPrize->split_draw : $remainingQuantity;
 
         // Create a batch record
         $batch = \App\Models\BulkDrawBatch::create([

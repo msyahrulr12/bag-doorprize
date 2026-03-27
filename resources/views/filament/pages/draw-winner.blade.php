@@ -67,7 +67,7 @@
 
                 <x-filament::button type="submit" size="xl" color="primary"
                     class="w-full shadow-lg shadow-primary-500/30 font-bold py-4" wire:loading.attr="disabled"
-                    :disabled="$winner">
+                    :disabled="$remainingQuantity == 0">
                     <span wire:loading.remove class="flex items-center gap-2">
                         <x-heroicon-s-bolt class="w-5 h-5" />
                         GENERATE WINNER
@@ -98,27 +98,27 @@
 
     @if($isDrawing)
         <div x-data="{
-                        digits: '00000000',
-                        target: '{{ $pendingWinner['lucky_number'] }}',
-                        isStopping: false,
-                        init() {
-                            let interval = setInterval(() => {
-                                if (this.isStopping) return;
-                                this.digits = Math.floor(Math.random() * 99999999).toString().padStart(8, '0');
-                            }, 50);
+                                                                digits: '00000000',
+                                                                target: '{{ $pendingWinner['lucky_number'] }}',
+                                                                isStopping: false,
+                                                                init() {
+                                                                    let interval = setInterval(() => {
+                                                                        if (this.isStopping) return;
+                                                                        this.digits = Math.floor(Math.random() * 99999999).toString().padStart(8, '0');
+                                                                    }, 50);
 
-                            setTimeout(() => {
-                                if(!this.isStopping) this.stop();
-                            }, 5000);
-                        },
-                        stop() {
-                            this.isStopping = true;
-                            this.digits = this.target;
-                            setTimeout(() => {
-                                $wire.finishDrawing();
-                            }, 1500); 
-                        }
-                    }"
+                                                                    setTimeout(() => {
+                                                                        if(!this.isStopping) this.stop();
+                                                                    }, 5000);
+                                                                },
+                                                                stop() {
+                                                                    this.isStopping = true;
+                                                                    this.digits = this.target;
+                                                                    setTimeout(() => {
+                                                                        $wire.finishDrawing();
+                                                                    }, 1500); 
+                                                                }
+                                                            }"
             class="mt-12 bg-gray-950 rounded-3xl shadow-2xl p-12 text-center relative overflow-hidden border border-white/10">
             <div class="relative z-10">
                 <div
@@ -246,6 +246,114 @@
             <!-- Decoration Icons -->
             <x-heroicon-o-sparkles class="absolute top-4 right-10 w-24 h-24 text-white/5 rotate-12" />
             <x-heroicon-o-star class="absolute -bottom-8 -left-8 w-40 h-40 text-white/5 -rotate-12" />
+        </div>
+    @endif
+
+    @if (!empty($winners))
+        <div class="mt-8 space-y-4" x-data="{}"
+            x-on:scroll-to-results.window="$el.scrollIntoView({ behavior: 'smooth', block: 'start' })">
+            <div class="flex items-center justify-between">
+                <h3 class="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                    <x-heroicon-o-users class="w-6 h-6 text-primary-500" />
+                    Generated Winners ({{ $this->paginatedWinners->total() }})
+                </h3>
+                <div class="flex items-center gap-4">
+                    <div class="text-sm text-gray-500 font-medium italic uppercase tracking-widest text-[10px]">
+                        {{ $isPreview ? 'Preview results - not yet saved' : 'Confirmed winners' }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="relative min-h-[400px]">
+                <!-- Table Loading Overlay -->
+                <div wire:loading wire:target="gotoPage,nextPage,previousPage"
+                    class="absolute inset-0 z-50 bg-white/50 dark:bg-gray-900/50 backdrop-blur-[2px] rounded-xl flex items-center justify-center transition-opacity duration-300">
+                    <div class="flex flex-col items-center gap-3">
+                        <x-filament::loading-indicator class="w-10 h-10 text-primary-600" />
+                        <span
+                            class="text-sm font-bold text-primary-700 dark:text-primary-400 uppercase tracking-widest animate-pulse">
+                            Refreshing winners...
+                        </span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 transition-opacity duration-300"
+                    wire:loading.class="opacity-50 pointer-events-none" wire:target="gotoPage,nextPage,previousPage">
+                    @foreach ($winners as $winnerChunk)
+                        <div class="space-y-4">
+                            <div
+                                class="overflow-hidden bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-800 rounded-xl hover:shadow-md transition-shadow">
+                                <table class="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr class="bg-gray-50 dark:bg-gray-800/50">
+                                            <th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                                                Customer Info
+                                            </th>
+                                            <th
+                                                class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider text-center">
+                                                Lucky Number
+                                            </th>
+                                            <th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                                                Branch / Ticket
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                                        @foreach ($winnerChunk as $winner)
+                                            <tr class="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
+                                                <td class="px-4 py-3">
+                                                    <div class="flex flex-col">
+                                                        <span
+                                                            class="font-bold text-xs text-gray-900 dark:text-white leading-tight">{{ \App\Utils\MaskHelper::name($winner['name']) }}</span>
+                                                        <span
+                                                            class="text-[10px] text-gray-500 font-mono mt-0.5">{{ \App\Utils\MaskHelper::mask($winner['cif']) }}
+                                                            •
+                                                            {{ \App\Utils\MaskHelper::mask($winner['account']['account_number'] ?? 'N/A') }}</span>
+                                                    </div>
+                                                </td>
+                                                <td class="px-4 py-3 text-center whitespace-nowrap">
+                                                    <span
+                                                        class="inline-block px-2 py-0.5 bg-primary-50 dark:bg-primary-900/10 text-primary-700 dark:text-primary-400 rounded-md font-black font-mono text-[11px] shadow-sm border border-primary-100/50 dark:border-primary-800/30">
+                                                        {{ $winner['lucky_number'] ?? $winner['winning_number'] }}
+                                                    </span>
+                                                </td>
+                                                <td class="px-4 py-3">
+                                                    <div class="flex flex-col">
+                                                        <div
+                                                            class="mb-1.5 pb-1.5 border-b border-gray-100 dark:border-gray-800 items-center">
+                                                            <span
+                                                                class="text-[10px] font-black text-primary-600 dark:text-primary-400 uppercase tracking-tighter">{{ $winner['account']['branch']['branch_name'] ?? ($winner['branch_name'] ?? 'N/A') }}</span>
+                                                        </div>
+                                                        <div class="flex items-center gap-1.5">
+                                                            <span
+                                                                class="text-[10px] font-bold text-gray-400 uppercase">Range:</span>
+                                                            <span
+                                                                class="text-[10px] font-medium text-gray-600 dark:text-gray-400">{{ $winner['ticket']['range_start'] ?? 'N/A' }}
+                                                                - {{ $winner['ticket']['range_end'] ?? 'N/A' }}</span>
+                                                        </div>
+                                                        <div class="flex items-center gap-1.5 mt-0.5">
+                                                            <span
+                                                                class="text-[10px] font-bold text-gray-400 uppercase">Points:</span>
+                                                            <span
+                                                                class="text-[10px] font-black text-primary-600 dark:text-primary-400">{{ number_format($winner['ticket']['total_points'] ?? 0) }}</span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+
+            @if (!$isPreview && $this->paginatedWinners->total() > 0)
+                <div class="mt-8 p-4 bg-gray-50 dark:bg-gray-800/20 rounded-xl border border-gray-100 dark:border-gray-800/50">
+                    <x-filament::pagination :paginator="$this->paginatedWinners" />
+                </div>
+            @endif
         </div>
     @endif
 

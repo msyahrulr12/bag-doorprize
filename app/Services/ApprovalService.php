@@ -42,7 +42,7 @@ class ApprovalService
 
         Notification::make()
             ->title("New {$action} request for {$resource}")
-            ->body("A new approval request has been submitted by " . Auth::user()->name)
+            ->body("A new approval request has been submitted by " . (Auth::user()?->name ?? 'System'))
             ->info()
             ->sendToDatabase($users);
 
