@@ -35,6 +35,7 @@ class DrawWinnerBulk extends Page
     protected static ?string $slug = 'draw-winner-bulk/{eventPrize}';
 
     public ?int $batchId = null;
+    public $isSingleDrawingMode = false;
     public ?string $batchStatus = null;
     public ?int $processedCount = 0;
     public ?int $totalToProcess = 0;
@@ -77,11 +78,16 @@ class DrawWinnerBulk extends Page
     protected function getHeaderActions(): array
     {
         return [
-            \Filament\Actions\Action::make('export')
+            \Filament\Actions\Action::make('export_csv')
                 ->label(__('Export CSV'))
                 ->color('success')
                 ->icon('heroicon-o-arrow-down-tray')
                 ->action(fn() => $this->exportCsv()),
+            \Filament\Actions\Action::make('export_excel')
+                ->label(__('Export Excel'))
+                ->color('emerald')
+                ->icon('heroicon-o-table-cells')
+                ->action(fn() => $this->exportExcel()),
             \Filament\Actions\Action::make('back')
                 ->label(__('Go Back'))
                 ->url(route('filament.admin.resources.events.view', $this->eventPrize->event_id))
@@ -91,64 +97,88 @@ class DrawWinnerBulk extends Page
         ];
     }
 
-    public function exportCsv()
+    public function exportCsv($extension = 'csv')
     {
-        $exportData = [];
-
-        if ($this->isPreview && $this->winners) {
-            // Use current preview winners (flatten the chunks)
-            $exportData = collect($this->winners)->flatten(1)->toArray();
-        } else {
-            // Fetch ALL winners for this event prize from database
-            $exportData = Winner::where('event_prize_id', $this->eventPrizeId)
-                ->get()
-                ->map(fn(Winner $w) => $w->getDataBulk())
-                ->toArray();
+        $winnersToExport = $this->newWinners;
+        if (empty($winnersToExport)) {
+            // If no new winners, fallback to results in winners array
+            if ($this->winners) {
+                $winnersToExport = collect($this->winners)->flatten(1)->toArray();
+            } else {
+                // Fallback to searching confirmed ones if none in memory
+                $winnersToExport = Winner::where('event_prize_id', $this->eventPrizeId)
+                    ->where('draw_session_id', $this->drawSessionId)
+                    ->get()
+                    ->toArray();
+            }
         }
 
-        if (empty($exportData)) {
+        if (empty($winnersToExport)) {
             Notification::make()->warning()->title('No winners to export')->send();
             return null;
         }
 
-        $filename = "winners_" . str_replace([' ', '/', '\\'], '_', $this->eventPrize->prize->prize_name) . "_" . now()->format('Ymd_His') . ".csv";
+        $filename = "bulk_winners_" . now()->format('Ymd_His') . "." . $extension;
 
-        return response()->streamDownload(function () use ($exportData) {
+        if ($extension === 'xls') {
+            return response()->streamDownload(function () use ($winnersToExport) {
+                echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+                <head><meta http-equiv="content-type" content="text/html; charset=utf-8"/></head>
+                <body><table border="1">
+                    <thead>
+                        <tr style="background-color: #f3f4f6;">
+                            <th>CIF</th>
+                            <th>Account Number</th>
+                            <th>Name</th>
+                            <th>Branch</th>
+                            <th>Region</th>
+                            <th>Lucky Number</th>
+                            <th>Points</th>
+                            <th>Drawn At</th>
+                        </tr>
+                    </thead>
+                    <tbody>';
+                foreach ($winnersToExport as $w) {
+                    echo '<tr>
+                        <td>' . ($w['cif'] ?? ($w['participant']['participant_cif'] ?? 'N/A')) . '</td>
+                        <td>' . ($w['account']['account_number'] ?? ($w['participant']['participant_account_number'] ?? 'N/A')) . '</td>
+                        <td>' . ($w['name'] ?? ($w['participant']['participant_name'] ?? 'N/A')) . '</td>
+                        <td>' . ($w['branch_name'] ?? ($w['account']['branch']['branch_name'] ?? 'N/A')) . '</td>
+                        <td>' . ($w['region'] ?? ($w['account']['branch']['region'] ?? 'N/A')) . '</td>
+                        <td>' . ($w['lucky_number'] ?? $w['winning_number'] ?? 'N/A') . '</td>
+                        <td>' . ($w['ticket']['total_points'] ?? 0) . '</td>
+                        <td>' . ($w['drawn_at'] ?? now()->format('Y-m-d H:i:s')) . '</td>
+                    </tr>';
+                }
+                echo '</tbody></table></body></html>';
+            }, $filename, ['Content-Type' => 'application/vnd.ms-excel']);
+        }
+
+        return response()->streamDownload(function () use ($winnersToExport) {
             $file = fopen('php://output', 'w');
-            // Byte Order Mark for Excel compatibility
             fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
-            fputcsv($file, [
-                'cif',
-                'account_number',
-                'name',
-                'region',
-                'branch_company_book',
-                'branch_name',
-                'winning_number',
-                'points',
-                'range_start',
-                'range_end',
-                'drawn_at'
-            ]);
+            fputcsv($file, ['CIF', 'Account Number', 'Name', 'Branch', 'Region', 'Lucky Number', 'Points', 'Drawn At']);
 
-            foreach ($exportData as $row) {
+            foreach ($winnersToExport as $w) {
                 fputcsv($file, [
-                    $row['cif'] ?? '',
-                    $row['account']['account_number'] ?? '',
-                    $row['name'] ?? '',
-                    $row['region'] ?? '',
-                    $row['branch_company_book'] ?? '',
-                    $row['branch_name'] ?? '',
-                    $row['lucky_number'] ?? $row['winning_number'] ?? '',
-                    $row['ticket']['total_points'] ?? 0,
-                    $row['ticket']['range_start'] ?? '',
-                    $row['ticket']['range_end'] ?? '',
-                    isset($row['drawn_at']) ? $row['drawn_at'] : now()->format('Y-m-d H:i:s'),
+                    $w['cif'] ?? ($w['participant']['participant_cif'] ?? 'N/A'),
+                    $w['account']['account_number'] ?? ($w['participant']['participant_account_number'] ?? 'N/A'),
+                    $w['name'] ?? ($w['participant']['participant_name'] ?? 'N/A'),
+                    $w['branch_name'] ?? ($w['account']['branch']['branch_name'] ?? 'N/A'),
+                    $w['region'] ?? ($w['account']['branch']['region'] ?? 'N/A'),
+                    $w['lucky_number'] ?? $w['winning_number'] ?? 'N/A',
+                    $w['ticket']['total_points'] ?? 0,
+                    $w['drawn_at'] ?? now()->format('Y-m-d H:i:s'),
                 ]);
             }
             fclose($file);
         }, $filename);
+    }
+
+    public function exportExcel()
+    {
+        return $this->exportCsv('xls');
     }
 
     public function mount($eventPrize)
@@ -223,6 +253,8 @@ class DrawWinnerBulk extends Page
 
         $sessions = DrawSession::where('event_id', $this->eventPrize->event_id)->get();
 
+        $splitDrawValue = min($this->eventPrize?->remaining_quantity, $this->eventPrize?->split_draw > 0 ? $this->eventPrize->split_draw : 10);
+
         return $schema
             ->components([
                 Select::make('draw_session_id')
@@ -249,13 +281,13 @@ class DrawWinnerBulk extends Page
                     ->default(fn() => $this->drawSessionId)
                     ->disabled(fn(): bool => ($this->winners != null && count($this->winners) == $this->eventPrize->remaining_quantity)),
                 TextInput::make('split_draw')
-                    ->label('Draw Quantity')
+                    ->label('Split Draw')
                     ->numeric()
                     ->helperText('Number of winners to generate in this batch.')
                     ->required()
                     ->minValue(1)
                     ->maxValue(fn() => $this->eventPrize->remaining_quantity)
-                    ->default(fn() => min($this->eventPrize->remaining_quantity, $this->eventPrize->split_draw > 0 ? $this->eventPrize->split_draw : 10))
+                    ->default($splitDrawValue)
                     ->disabled(fn(): bool => (($this->winners != null || count($this->winners) > 0) && count($this->winners) == $this->eventPrize->remaining_quantity)),
             ])
             ->statePath('searchData');
@@ -308,22 +340,25 @@ class DrawWinnerBulk extends Page
             ->send();
     }
 
-    public function cancelBatch()
+    public function stopDrawing()
     {
         if (!$this->batchId)
             return;
 
         $batch = \App\Models\BulkDrawBatch::find($this->batchId);
         if ($batch && in_array($batch->status, ['PENDING', 'PROCESSING', 'COMPLETED'])) {
-            $batch->update(['status' => 'CANCELLED']);
-            $this->batchStatus = 'CANCELLED';
+            if ($batch->status !== 'COMPLETED') {
+                $batch->update(['status' => 'CANCELLED']);
+                $this->batchStatus = 'CANCELLED';
+            }
+
             $this->isStopping = true;
             $this->stopTriggeredAt = time();
 
             Notification::make()
                 ->warning()
                 ->title('Stopping drawing process')
-                ->body("Drawing will finish 100% in the background. Please wait for the reveal.")
+                ->body("Drawing will finish in the background if not already done. Results will be shown shortly.")
                 ->send();
         }
     }
@@ -337,8 +372,12 @@ class DrawWinnerBulk extends Page
         if (!$batch)
             return;
 
-        $this->batchStatus = $batch->status;
+        $this->totalToProcess = $batch->total_to_process;
         $this->processedCount = $batch->processed_winners;
+
+        if ($batch->total_to_process == 1) {
+            $this->isSingleDrawingMode = true;
+        }
 
         // Progressive loading: Update table while processing
         if (!$this->isStopping && $batch->results && count($batch->results) > 0) {
@@ -360,11 +399,8 @@ class DrawWinnerBulk extends Page
 
         if ($batch->status === 'COMPLETED' || $batch->status === 'CANCELLED') {
 
-            if (($batch->status === 'COMPLETED' || $batch->status === 'CANCELLED') && !$this->isStopping && !$this->stopTriggeredAt) {
-                $this->stopTriggeredAt = time();
-            }
-
-            // If we are in stopping sequence, wait for 100% completion AND the 3s gap
+            // If we are in stopping sequence, wait for 100% completion AND the delay?
+            // Actually, for admin, we just wait for the user to be ready (handled by logic below)
             if ($this->isStopping || $this->stopTriggeredAt) {
                 $drawDelay = Setting::where('key', 'draw_delay')->first()->value ?? 3;
                 $timeRemaining = $drawDelay - (time() - $this->stopTriggeredAt);

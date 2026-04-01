@@ -9,7 +9,6 @@ use App\Models\Product;
 use App\Models\Setting;
 use DB;
 use Illuminate\Console\Command;
-use Storage;
 
 class ProcessPointHistoryCommand extends Command
 {
@@ -142,47 +141,5 @@ class ProcessPointHistoryCommand extends Command
         } finally {
             $lock->release();
         }
-    }
-
-    private function processFile(string $content, string $type, int $month, int $year, string $separator, array $products, array $branches, int $eventId, array $settings): void
-    {
-        $this->info("Processing " . strtoupper($type) . " file for {$month}/{$year}...");
-
-        // Read CSV file
-        $content = trim($content);
-        $lines = explode(PHP_EOL, $content);
-        $rows = array_map(fn($line) => str_getcsv($line, $separator), $lines);
-        $header = array_shift($rows);
-
-        if (empty($header) || empty($rows)) {
-            $this->warn("File for " . strtoupper($type) . " is empty or has no header.");
-            return;
-        }
-
-        // Setup chunks
-        $chunkSize = 1000;
-        $chunks = array_chunk($rows, $chunkSize);
-
-        $this->info('Dispatching ' . count($chunks) . ' job(s) to queue...');
-
-        $bar = $this->output->createProgressBar(count($rows));
-        $bar->start();
-
-        foreach ($chunks as $chunk) {
-            ProcessPointHistory::dispatch(
-                $chunk,
-                $products,
-                $branches,
-                $month,
-                $year,
-                $type,
-                $settings,
-                $eventId
-            )->onQueue('imports');
-            $bar->advance(count($chunk));
-        }
-
-        $bar->finish();
-        $this->newLine(2);
     }
 }

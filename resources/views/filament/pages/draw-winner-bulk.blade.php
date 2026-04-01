@@ -1,4 +1,21 @@
-<x-filament-panels::page>
+<x-filament-panels::page x-data="{
+    drawing: @entangle('batchId'),
+    isStopping: @entangle('isStopping'),
+    placeholders: [],
+    init() {
+        setInterval(() => {
+            if (this.drawing && !this.isStopping) {
+                const names = ['Wibowo', 'Sari', 'Pratama', 'Lestari', 'Budi', 'Putri', 'Hidayat', 'Santoso', 'Kurniawan', 'Mulyani', 'Setiawan', 'Ramadhan', 'Wijaya', 'Utami'];
+                const branches = ['JAKARTA', 'SURABAYA', 'BANDUNG', 'MEDAN', 'MAKASSAR', 'SEMARANG', 'PALEMBANG', 'MALANG', 'BEKASI', 'TANGERANG'];
+                this.placeholders = Array.from({length: 6}).map(() => ({
+                    name: names[Math.floor(Math.random() * names.length)] + ' *** ' + names[Math.floor(Math.random() * names.length)],
+                    branch: branches[Math.floor(Math.random() * branches.length)],
+                    lucky_number: Math.floor(Math.random() * 99999999).toString().padStart(8, '0')
+                }));
+            }
+        }, 80);
+    }
+}">
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Prize Info Card -->
         <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-800">
@@ -99,52 +116,77 @@
 
     @if($batchId || $isStopping)
         <div wire:poll.2000ms="checkBatchStatus"
-            class="mt-8 bg-white dark:bg-gray-900 rounded-xl shadow-sm p-8 border-2 border-primary-500/20 text-center animate-pulse">
-            <div class="max-w-md mx-auto">
+            class="mt-8 bg-white dark:bg-gray-900 rounded-[2rem] shadow-2xl border-2 border-primary-500/10 text-center relative overflow-hidden p-8 md:p-12">
+            
+            <!-- Abstract Pattern -->
+            <div class="absolute inset-0 opacity-[0.03] pointer-events-none"
+                style="background-image: radial-gradient(theme('colors.primary.500') 1px, transparent 1px); background-size: 20px 20px;"></div>
+
+            <div class="max-w-4xl mx-auto relative z-10">
                 @if($isStopping)
                     <div
-                        class="mb-4 inline-flex items-center justify-center p-4 bg-warning-50 dark:bg-warning-900/30 rounded-full animate-bounce">
-                        <x-heroicon-o-arrow-path class="w-10 h-10 text-warning-600 animate-spin" />
+                        class="mb-8 inline-flex items-center justify-center p-6 bg-warning-50 dark:bg-warning-900/30 rounded-full animate-bounce">
+                        <x-heroicon-o-arrow-path class="w-12 h-12 text-warning-600 animate-spin" />
                     </div>
-                    <h3 class="text-xl font-black text-gray-900 dark:text-white mb-2 uppercase tracking-tight">Finalizing
-                        Drawing</h3>
-                    <p
-                        class="text-gray-500 dark:text-gray-400 mb-6 font-bold text-[10px] uppercase tracking-widest leading-relaxed">
-                        System is completing all draws and matching winner details.<br>Results will be revealed automatically.
-                    </p>
-
-                    <div class="flex items-center gap-3 justify-center text-warning-600 font-black">
-                        <x-filament::loading-indicator class="w-5 h-5" />
-                        <span class="text-[10px] tracking-[0.4em] uppercase animate-pulse">Synchronizing Data</span>
-                    </div>
+                    <h3 class="text-3xl font-black text-gray-900 dark:text-white mb-2 uppercase tracking-tight">Finalizing Results</h3>
+                    <p class="text-gray-500 dark:text-gray-400 mb-8 font-bold text-xs uppercase tracking-[0.2em]">Wrapping up the drawing sequence...</p>
                 @else
-                    <div
-                        class="mb-4 inline-flex items-center justify-center p-4 bg-primary-50 dark:bg-primary-900/30 rounded-full">
-                        <svg class="animate-spin h-10 w-10 text-primary-600" xmlns="http://www.w3.org/2000/svg" fill="none"
-                            viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-                            </path>
-                        </svg>
+                    <div class="mb-10 relative">
+                        <div class="absolute inset-0 bg-primary-500/10 rounded-full blur-3xl animate-pulse"></div>
+                        <div class="relative z-10 flex gap-2 md:gap-3 justify-center scale-90 md:scale-100">
+                            <template x-for="(digit, index) in (placeholders[0]?.lucky_number || '00000000').split('')" :key="index">
+                                <div class="w-12 h-16 md:w-16 md:h-24 bg-gray-950 rounded-2xl border border-white/20 flex items-center justify-center shadow-2xl">
+                                    <span class="text-4xl md:text-6xl font-black font-mono text-white tracking-tighter" x-text="digit"></span>
+                                </div>
+                            </template>
+                        </div>
                     </div>
-                    <h3 class="text-xl font-black text-gray-900 dark:text-white mb-2 uppercase tracking-tight">System is Drawing
-                        Winners</h3>
-                    <p class="text-gray-500 dark:text-gray-400 mb-6 font-bold text-xs">Processing batch #{{ $batchId }}.
-                        Currently {{ $processedCount }} of {{ $totalToProcess }} generated.</p>
 
-                    <div class="w-full h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                        @php $progress = ($totalToProcess > 0) ? ($processedCount / $totalToProcess) * 100 : 0; @endphp
-                        <div class="h-full bg-primary-600 transition-all duration-500" style="width: {{ $progress }}%"></div>
+                    <h3 class="text-2xl font-black text-gray-900 dark:text-white mb-2 uppercase tracking-tight">System is Drawing Winners</h3>
+                    <div class="inline-flex items-center gap-2 px-4 py-1.5 bg-primary-500/10 rounded-full border border-primary-500/20 mb-8">
+                        <span class="animate-ping w-2 h-2 bg-primary-500 rounded-full"></span>
+                        <span class="text-[10px] font-black text-primary-500 uppercase tracking-widest leading-none">Weighted Randomization Active</span>
                     </div>
-                    <p class="mt-2 text-[10px] font-black text-primary-600 uppercase tracking-widest">{{ round($progress) }}%
-                        Complete</p>
 
-                    @if($batchStatus !== 'CANCELLED')
-                        <div class="mt-6">
-                            <x-filament::button wire:click="cancelBatch" color="danger" variant="outline" size="sm"
-                                class="font-extrabold uppercase tracking-tighter shadow-sm hover:shadow-md transition-all"
-                                :disabled="$processPercentage < 100">
+                    <div class="w-full max-w-2xl mx-auto">
+                        <div class="flex items-center justify-between mb-2">
+                             <div class="flex items-center gap-2">
+                                 <x-filament::loading-indicator class="w-4 h-4 text-primary-600" />
+                                 <span class="text-[10px] font-black uppercase text-primary-600 tracking-widest">
+                                    {{ $processedCount }} / {{ $totalToProcess }} READY
+                                 </span>
+                             </div>
+                             @php $progress = ($totalToProcess > 0) ? ($processedCount / $totalToProcess) * 100 : 0; @endphp
+                             <span class="text-[10px] font-black uppercase text-gray-400 tracking-widest">{{ round($progress) }}%</span>
+                        </div>
+                        <div class="w-full h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden shadow-inner mb-10">
+                            <div class="h-full bg-primary-600 transition-all duration-500" style="width: {{ $progress }}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Placeholder Animation Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-10">
+                        <template x-for="(p, i) in placeholders" :key="i">
+                            <div class="bg-gray-50/50 dark:bg-gray-800/30 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-3 flex items-center gap-3 opacity-60 animate-fade-in-up">
+                                <div class="w-10 h-10 bg-white dark:bg-gray-800 rounded-lg flex items-center justify-center shrink-0 border border-gray-100 dark:border-gray-700 shadow-sm">
+                                    <x-heroicon-o-sparkles class="w-5 h-5 text-primary-400" />
+                                </div>
+                                <div class="flex-1 text-left min-w-0">
+                                    <div class="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-0.5 truncate" x-text="p.branch"></div>
+                                    <h4 class="font-black text-gray-600 dark:text-gray-400 text-[10px] truncate" x-text="p.name"></h4>
+                                </div>
+                                <div class="text-right shrink-0">
+                                    <div class="text-xs font-black font-mono text-primary-600 tracking-tighter" x-text="p.lucky_number"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                @endif
+
+                @if($batchStatus !== 'CANCELLED')
+                    <div class="mt-4">
+                            <x-filament::button wire:click="stopDrawing" color="danger" variant="outline" size="sm"
+                                class="font-extrabold uppercase tracking-tighter shadow-sm hover:shadow-md transition-all transition-transform active:scale-95">
                                 <span class="flex items-center gap-2">
                                     <x-heroicon-o-stop-circle class="w-4 h-4" />
                                     STOP DRAWING
@@ -177,31 +219,47 @@
                             Winner Detected
                         </div>
                     </div>
-                    <h3 class="text-3xl font-black mb-1">CONGRATULATIONS!</h3>
+                    <h3 class="text-3xl font-black mb-1 leading-none tracking-tighter">CONGRATULATIONS!</h3>
+                    <div class="flex items-center gap-3 justify-center md:justify-start mt-4">
+                        <x-filament::link wire:click="exportCsv" color="success"
+                            class="text-[10px] font-black uppercase tracking-widest bg-white/10 px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/20 cursor-pointer">
+                            <span class="flex items-center gap-2">
+                                <x-heroicon-o-document-text class="w-3.5 h-3.5 text-green-400" />
+                                CSV
+                            </span>
+                        </x-filament::link>
+                        <x-filament::link wire:click="exportExcel" color="success"
+                            class="text-[10px] font-black uppercase tracking-widest bg-white/10 px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/20 cursor-pointer">
+                            <span class="flex items-center gap-2">
+                                <x-heroicon-o-table-cells class="w-3.5 h-3.5 text-emerald-400" />
+                                EXCEL
+                            </span>
+                        </x-filament::link>
+                    </div>
                 </div>
 
                 @if ($isPreview && $enableRedraw && !$alreadyConfirmed)
-                    <div class="flex flex-col gap-3 min-w-[220px]">
-                        <x-filament::button wire:click="confirmWinner" color="warning" size="xl"
-                            class="w-full font-black !text-gray-950 !bg-yellow-400 hover:!bg-yellow-500 shadow-[0_10px_40px_rgba(250,204,21,0.4)] transition-all hover:-translate-y-1 rounded-2xl border-none py-4">
+                    <div class="flex flex-col gap-3 min-w-[240px]">
+                        <x-filament::button wire:click="confirmWinner" color="warning" size="lg"
+                            class="w-full font-black !text-gray-950 !bg-yellow-400 hover:!bg-yellow-500 shadow-xl transition-all active:scale-95 rounded-xl border-none py-3">
                             <span class="flex items-center justify-center gap-3">
-                                <x-heroicon-s-check-badge class="w-7 h-7" />
-                                CONFIRM ALL WINNERS
+                                <x-heroicon-s-check-badge class="w-6 h-6" />
+                                CONFIRM ALL
                             </span>
                         </x-filament::button>
 
-                        <div class="grid grid-cols-2 gap-2 mt-2">
+                        <div class="grid grid-cols-2 gap-2">
                             <x-filament::button wire:click="draw" color="white" variant="link"
-                                class="text-white bg-white/10 hover:bg-white/20 font-bold border border-white/20 py-2">
+                                class="text-white bg-white/10 hover:bg-white/20 font-bold border border-white/20 py-2 rounded-xl">
                                 <span class="flex items-center gap-1.5 justify-center">
                                     <x-heroicon-o-arrow-path class="w-4 h-4" />
-                                    RE-DRAW
+                                    REDRAW
                                 </span>
                             </x-filament::button>
 
                             <x-filament::button wire:click="clearWinner" color="white" variant="link"
-                                class="text-white bg-white/10 hover:bg-white/20 font-bold border border-white/20 py-2">
-                                <span class="flex items-center gap-1.5 justify-center">
+                                class="text-white bg-white/10 hover:bg-white/20 font-bold border border-white/20 py-2 rounded-xl">
+                                <span class="flex items-center gap-1.5 justify-center text-red-100">
                                     <x-heroicon-o-x-mark class="w-4 h-4" />
                                     CANCEL
                                 </span>
@@ -211,6 +269,43 @@
                 @endif
             </div>
 
+            <div class="mt-8 pt-8 border-t border-white/10">
+                @if($isSingleDrawingMode && !empty($winners))
+                    @php $singleWinner = collect($winners)->flatten(1)->first(); @endphp
+                    @if($singleWinner)
+                        <!-- Grand Style Result for Single Winner -->
+                        <div class="w-full max-w-2xl mx-auto bg-gray-950 rounded-[3rem] p-12 shadow-2xl border border-white/10 text-white text-center animate-winner-card overflow-hidden relative mb-4">
+                            <!-- Pattern -->
+                            <div class="absolute inset-0 opacity-[0.03] pointer-events-none" style="background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 20px 20px;"></div>
+                            
+                            <div class="relative z-10 flex flex-col items-center">
+                                <div class="mb-8 inline-flex p-6 bg-white/10 rounded-[2.5rem] backdrop-blur-md border border-white/20 shadow-inner">
+                                     <x-heroicon-o-gift class="w-20 h-20 text-yellow-400" />
+                                </div>
+                                <div class="text-[10px] font-black uppercase tracking-[0.5em] text-white/50 mb-4">The Chosen Winner</div>
+                                <h2 class="text-4xl md:text-6xl font-black mb-4 tracking-tighter drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)] uppercase">
+                                    {{ $singleWinner['name'] }}
+                                </h2>
+                                <div class="text-xl font-bold opacity-60 mb-10 uppercase tracking-widest">{{ $singleWinner['branch_name'] }}</div>
+                                
+                                <div class="flex flex-col items-center bg-white/5 px-12 py-8 rounded-[2rem] backdrop-blur-lg border border-white/10 shadow-2xl">
+                                    <span class="text-xs font-black opacity-40 uppercase tracking-[0.3em] mb-6">Lucky Ticket Sequence</span>
+                                    <div class="flex gap-2">
+                                        @foreach(str_split($singleWinner['lucky_number'] ?? $singleWinner['winning_number'] ?? '00000000') as $d)
+                                            <div class="w-10 h-14 md:w-14 md:h-20 bg-gray-900 rounded-2xl border border-white/20 flex items-center justify-center shadow-lg">
+                                                <span class="text-2xl md:text-5xl font-black font-mono tracking-tight text-white">{{ $d }}</span>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                    <div class="mt-8 text-[10px] font-mono text-white/30 uppercase tracking-[0.2em]">
+                                        CIF: {{ $singleWinner['cif'] }} • ACC: {{ $singleWinner['account']['account_number'] ?? $singleWinner['account_number'] ?? 'N/A' }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
+                @else
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <!-- Decoration Icons -->
             <x-heroicon-o-sparkles class="absolute top-4 right-10 w-24 h-24 text-white/5 rotate-12" />
             <x-heroicon-o-star class="absolute -bottom-8 -left-8 w-40 h-40 text-white/5 -rotate-12" />
@@ -276,11 +371,7 @@
                                                 <td class="px-4 py-3">
                                                     <div class="flex flex-col">
                                                         <span
-                                                            class="font-bold text-xs text-gray-900 dark:text-white leading-tight">{{ \App\Utils\MaskHelper::name($winner['name']) }}</span>
-                                                        <span
-                                                            class="text-[10px] text-gray-500 font-mono mt-0.5">{{ \App\Utils\MaskHelper::mask($winner['cif']) }}
-                                                            •
-                                                            {{ \App\Utils\MaskHelper::mask($winner['account']['account_number'] ?? 'N/A') }}</span>
+                                                            class="font-bold text-xs text-gray-900 dark:text-white leading-tight">{{ $winner['name'] }}</span>
                                                     </div>
                                                 </td>
                                                 <td class="px-4 py-3 text-center whitespace-nowrap">
@@ -295,19 +386,6 @@
                                                             class="mb-1.5 pb-1.5 border-b border-gray-100 dark:border-gray-800 items-center">
                                                             <span
                                                                 class="text-[10px] font-black text-primary-600 dark:text-primary-400 uppercase tracking-tighter">{{ $winner['account']['branch']['branch_name'] ?? ($winner['branch_name'] ?? 'N/A') }}</span>
-                                                        </div>
-                                                        <div class="flex items-center gap-1.5">
-                                                            <span
-                                                                class="text-[10px] font-bold text-gray-400 uppercase">Range:</span>
-                                                            <span
-                                                                class="text-[10px] font-medium text-gray-600 dark:text-gray-400">{{ $winner['ticket']['range_start'] ?? 'N/A' }}
-                                                                - {{ $winner['ticket']['range_end'] ?? 'N/A' }}</span>
-                                                        </div>
-                                                        <div class="flex items-center gap-1.5 mt-0.5">
-                                                            <span
-                                                                class="text-[10px] font-bold text-gray-400 uppercase">Points:</span>
-                                                            <span
-                                                                class="text-[10px] font-black text-primary-600 dark:text-primary-400">{{ number_format($winner['ticket']['total_points'] ?? 0) }}</span>
                                                         </div>
                                                     </div>
                                                 </td>

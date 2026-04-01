@@ -115,6 +115,21 @@ class ProcessPointHistory implements ShouldQueue
             if (!$customerId || !$branchId || !$productId || !$accNo)
                 continue;
 
+            $inactivMarker = $customer['inactiv_marker'] ?? null;
+            $excludeFlag = $customer['exclude_flag'] ?? null;
+            $confiFlag = $customer['confi_flag'] ?? null;
+
+            $accountStatus = null;
+            if ($confiFlag !== null && $confiFlag !== '') {
+                $accountStatus = Account::STATUS_CONFI;
+            } elseif ($inactivMarker !== null && $inactivMarker !== '') {
+                $accountStatus = Account::STATUS_INACTIVE;
+            } elseif ($excludeFlag !== null && $excludeFlag !== '') {
+                $accountStatus = Account::STATUS_EXCLUDE;
+            } else {
+                $accountStatus = Account::STATUS_ACTIVE;
+            }
+
             // Use account_number as key to prevent duplicates in the same batch
             $upserts[$accNo] = [
                 'customer_id' => $customerId,
@@ -127,7 +142,7 @@ class ProcessPointHistory implements ShouldQueue
                 'current_balance' => (float) ($customer['avgbal_tab'] ?? ($customer['avg_balance'] ?? 0)),
                 'created_at' => $now,
                 'updated_at' => $now,
-                'status' => Account::STATUS_ACTIVE,
+                'status' => $accountStatus,
             ];
         }
 

@@ -56,6 +56,8 @@ class Winner extends Model implements Auditable
         'branch_name',
         'branch_company_book',
         'branch_region',
+
+        'account_status'
     ];
 
     public const STATUS_PENDING = 'PENDING';
@@ -69,6 +71,18 @@ class Winner extends Model implements Auditable
         self::STATUS_CLAIMED => 'CLAIMED',
         self::STATUS_EXPIRED => 'EXPIRED',
         self::STATUS_CANCELED => 'CANCELLED'
+    ];
+
+    public const ACCOUNT_STATUS_ACTIVE = 'ACTIVE';
+    public const ACCOUNT_STATUS_INACTIVE = 'INACTIVE';
+    public const ACCOUNT_STATUS_EXCLUDE = 'EXCLUDE';
+    public const ACCOUNT_STATUS_CONFI = 'CONFI';
+
+    public const ACCOUNT_STATUS = [
+        self::ACCOUNT_STATUS_ACTIVE => 'ACTIVE',
+        self::ACCOUNT_STATUS_INACTIVE => 'INACTIVE',
+        self::ACCOUNT_STATUS_EXCLUDE => 'EXCLUDE',
+        self::ACCOUNT_STATUS_CONFI => 'CONFI',
     ];
 
     public function participant()
@@ -129,6 +143,9 @@ class Winner extends Model implements Auditable
             'region' => $this->participant->account->branch->region ?? 'N/A',
             'branch_name' => $this->participant->account->branch->branch_name ?? 'N/A',
             'drawn_at' => $this->drawn_at ? \Carbon\Carbon::parse($this->drawn_at)->format('Y-m-d H:i:s') : null,
+            'product_name' => $this->participant->account->product->nama_produk ?? 'N/A',
+            'branch_company_book' => $this->participant->account->branch->company_book ?? 'N/A',
+            'account_status' => $this->participant->account->status ?? 'N/A',
         ];
     }
 

@@ -26,10 +26,14 @@ class Account extends Model implements Auditable
 
     public const STATUS_ACTIVE = 'ACTIVE';
     public const STATUS_INACTIVE = 'INACTIVE';
+    public const STATUS_EXCLUDE = 'EXCLUDE';
+    public const STATUS_CONFI = 'CONFI';
 
     public const STATUS = [
         self::STATUS_ACTIVE => 'ACTIVE',
         self::STATUS_INACTIVE => 'INACTIVE',
+        self::STATUS_EXCLUDE => 'EXCLUDE',
+        self::STATUS_CONFI => 'CONFI',
     ];
 
     public function customer()

@@ -2,7 +2,12 @@
         drawing: @entangle('isDrawing'), 
         showWinner: false,
         number: 'XXXXXXXXX',
+        placeholderName: 'SEARCHING...',
+        placeholderBranch: 'RANDOMIZING...',
         counter: null,
+        stopRequested: false,
+        checkStopInterval: null,
+        isReady: false,
         triggerWin() {
             this.showWinner = true;
             confetti({
@@ -11,51 +16,62 @@
                 origin: { y: 0.6 },
                 colors: ['#2d7a8e', '#FFFFFF', '#64748b']
             });
+        },
+        start() {
+            this.drawing = true;
+            this.showWinner = false;
+            this.number = '000000000';
+            this.stopRequested = false;
+            this.isReady = false;
+            
+            const names = ['Wibowo', 'Sari', 'Pratama', 'Lestari', 'Budi', 'Putri', 'Hidayat', 'Santoso', 'Kurniawan', 'Mulyani'];
+            const branches = ['JAKARTA', 'SURABAYA', 'BANDUNG', 'MEDAN', 'MAKASSAR', 'SEMARANG', 'PALEMBANG'];
+
+            if (this.counter) clearInterval(this.counter);
+            this.counter = setInterval(() => {
+                let randomNum = '';
+                const chars = '0123456789';
+                for (let i = 0; i < 9; i++) {
+                    randomNum += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                this.number = randomNum;
+                this.placeholderName = names[Math.floor(Math.random() * names.length)] + ' *** ' + names[Math.floor(Math.random() * names.length)];
+                this.placeholderBranch = branches[Math.floor(Math.random() * branches.length)];
+            }, 50);
+
+            $wire.performDraw().then(() => {
+                this.isReady = true;
+            }).catch(err => {
+                this.finish();
+                console.error('Drawing error:', err);
+            });
+
+            if (this.checkStopInterval) clearInterval(this.checkStopInterval);
+            this.checkStopInterval = setInterval(() => {
+                if (this.stopRequested && this.isReady) {
+                    this.finish();
+                }
+            }, 100);
+        },
+        stop() {
+            this.stopRequested = true;
+        },
+        finish() {
+            clearInterval(this.checkStopInterval);
+            clearInterval(this.counter);
+            
+            const winner = $wire.get('pendingWinner');
+            if (winner && winner.lucky_number) {
+                this.number = winner.lucky_number;
+            } else {
+                this.number = 'XXXXXXXXX';
+            }
+            
+            this.drawing = false;
+            $wire.finishDrawing();
         }
-     }" x-on:trigger-animation.window="
-        drawing = true;
-        showWinner = false;
-        number = '000000000';
-        
-        let startTime = Date.now();
-        counter = setInterval(() => {
-            let randomNum = '';
-            const chars = '0123456789';
-            for (let i = 0; i < 9; i++) {
-                randomNum += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            number = randomNum;
-        }, 50);
-
-        $wire.performDraw().then(() => {
-            const pendingWinner = $wire.get('pendingWinner');
-            
-            if (!pendingWinner) {
-                clearInterval(counter);
-                drawing = false;
-                number = 'XXXXXXXXX';
-                return;
-            }
-
-            const finalLuckyNumber = pendingWinner.lucky_number;
-            
-            // Continue randomizing for at least 3 seconds total
-            let elapsed = Date.now() - startTime;
-            let remaining = Math.max(0, 3000 - elapsed);
-
-            setTimeout(() => {
-                clearInterval(counter);
-                number = finalLuckyNumber;
-                drawing = false;
-                $wire.finishDrawing();
-            }, remaining);
-        }).catch(err => {
-            clearInterval(counter);
-            drawing = false;
-            number = 'XXXXXXXXX';
-            console.error('Drawing error:', err);
-        });
-     " x-on:winner-confirmed.window="showWinner = false; number = 'XXXXXXXXX';">
+     }" x-on:trigger-animation.window="start()"
+    x-on:winner-confirmed.window="showWinner = false; number = 'XXXXXXXXX';">
     <!-- Abstract Background -->
     <div class="absolute inset-0 overflow-hidden pointer-events-none">
         <div class="absolute -top-24 -left-24 w-96 h-96 bg-[#2d7a8e]/10 rounded-full blur-[120px]"></div>
@@ -94,7 +110,7 @@
     </div>
 
     <!-- Main Board -->
-    <div
+    <div wire:ignore wire:key="public-drawing-{{ now()->timestamp }}"
         class="relative z-10 w-full max-w-4xl bg-white border border-slate-200 rounded-[2.5rem] p-8 md:p-16 shadow-2xl shadow-[#2d7a8e]/10 overflow-hidden">
         <!-- Inner Pattern -->
         <div class="absolute inset-0 opacity-[0.03] pointer-events-none"
@@ -116,21 +132,55 @@
             <!-- Drawing Logic -->
             <div class="w-full flex flex-col items-center gap-6">
                 @if(!$winner)
-                    <button wire:click="startDrawing" wire:loading.attr="disabled"
+                    <div x-show="drawing"
+                        class="w-full max-w-2xl bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl p-8 flex flex-col md:flex-row items-center gap-8 animate-pulse">
+                        <div class="bg-slate-200 p-4 rounded-2xl border border-white/20">
+                            <x-heroicon-o-gift class="w-16 h-16 text-slate-400" />
+                        </div>
+                        <div class="flex-1 text-center md:text-left">
+                            <div class="text-xs font-black uppercase tracking-widest mb-1 text-slate-400">Randomizing
+                                Winners...</div>
+                            <h2 class="text-4xl font-black mb-2 text-slate-300" x-text="placeholderName"></h2>
+                            <div class="flex flex-wrap gap-2 text-sm mb-2">
+                                <span class="bg-slate-200 px-3 py-1 rounded-full text-slate-400 font-mono"
+                                    x-text="placeholderBranch"></span>
+                                <span
+                                    class="bg-slate-200 px-3 py-1 rounded-full text-slate-400 font-mono text-center">Checking
+                                    Eligibility...</span>
+                            </div>
+                        </div>
+                        <div class="flex flex-col items-center gap-4">
+                            <button x-on:click="stop()"
+                                class="group relative px-16 py-6 bg-gradient-to-br from-red-500 to-rose-700 text-white font-black text-2xl rounded-[2.5rem] shadow-[0_20px_60px_rgba(225,29,72,0.5)] transition-all transform hover:scale-110 active:scale-95 overflow-hidden ring-8 ring-rose-500/10">
+                                <div
+                                    class="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity duration-300">
+                                </div>
+                                <div
+                                    class="absolute -inset-x-20 inset-y-0 bg-white/30 skew-x-12 -translate-x-full group-hover:translate-x-[200%] transition-transform duration-1000 ease-in-out">
+                                </div>
+                                <span class="relative flex items-center gap-3">
+                                    <div class="relative">
+                                        <x-heroicon-s-bolt class="w-8 h-8" />
+                                        <div class="absolute inset-0 bg-white rounded-full blur animate-ping opacity-50">
+                                        </div>
+                                    </div>
+                                    STOP & REVEAL
+                                </span>
+                            </button>
+                            <div
+                                class="flex items-center gap-2 text-rose-600 animate-pulse bg-rose-50 px-4 py-1.5 rounded-full border border-rose-100 shadow-sm">
+                                <span class="block w-2.5 h-2.5 rounded-full bg-rose-600"></span>
+                                <span class="text-[10px] font-black uppercase tracking-[0.3em] font-sans">Awaiting Manual
+                                    Stop</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button x-show="!drawing" wire:click="startDrawing" wire:loading.attr="disabled"
                         class="group relative px-12 py-5 bg-[#2d7a8e] hover:bg-[#256678] text-white font-black text-xl rounded-2xl shadow-[0_10px_40px_rgba(45,122,142,0.3)] transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none">
-                        <span x-show="!drawing" class="flex items-center gap-2">
+                        <span class="flex items-center gap-2">
                             <x-heroicon-s-bolt class="w-6 h-6" />
                             START DRAWING
-                        </span>
-                        <span x-show="drawing" class="flex items-center gap-2">
-                            <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
-                                    fill="none"></circle>
-                                <path class="opacity-75" fill="currentColor"
-                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-                                </path>
-                            </svg>
-                            GENERATING...
                         </span>
                     </button>
                 @else
@@ -140,30 +190,90 @@
                             <x-heroicon-o-trophy class="w-16 h-16 text-white" />
                         </div>
                         <div class="flex-1 text-center md:text-left">
-                            <div class="text-xs font-black uppercase tracking-widest mb-1 opacity-80">Lucky Winner Detected
+                            <div class="flex items-center justify-center md:justify-start gap-2 mb-4">
+                                <div
+                                    class="px-4 py-1 bg-yellow-400 text-[#2d7a8e] rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-yellow-400/20">
+                                    {{ count($pendingWinners) > 1 ? 'Multi-Winner Reveal' : 'Winner Detected' }}
+                                </div>
+                                @if(count($pendingWinners) <= 1)
+                                    <div
+                                        class="px-4 py-1 bg-white/10 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-[0.2em] border border-white/20">
+                                        {{ $winner['branch_name'] ?? 'N/A' }}
+                                    </div>
+                                @endif
                             </div>
-                            <h2 class="text-4xl font-black mb-2">
-                                {{ \App\Utils\MaskHelper::name($winner['participant']['participant_name']) }}
-                            </h2>
-                            <div class="flex flex-wrap gap-2 text-sm mb-2">
-                                <span
-                                    class="bg-black/20 px-3 py-1 rounded-full font-mono">{{ \App\Utils\MaskHelper::mask($winner['participant']['participant_cif']) }}</span>
-                                <span
-                                    class="bg-black/20 px-3 py-1 rounded-full font-mono">{{ $winner['participant']['account']['branch']['branch_name'] ?? ($winner['branch_name'] ?? 'N/A') }}</span>
-                            </div>
-                            <div class="text-white font-bold">
-                                Ticket: <span class="bg-white/20 px-2 py-0.5 rounded">{{ $winner['lucky_number'] }}</span>
-                            </div>
+
+                            @if(count($pendingWinners) <= 1)
+                                <h2
+                                    class="text-6xl font-black mb-4 tracking-tighter leading-tight text-white drop-shadow-xl animate-in slide-in-from-left duration-700">
+                                    {{ $winner['participant']['participant_name'] }}
+                                </h2>
+                                <div class="flex items-center gap-3 justify-center md:justify-start">
+                                    <div
+                                        class="bg-black/20 flex items-center px-4 py-2 rounded-xl backdrop-blur-md border border-white/10">
+                                        <span class="text-yellow-400 font-mono font-black text-2xl mr-2">#</span>
+                                        <span
+                                            class="text-2xl font-mono font-black tracking-widest">{{ $winner['lucky_number'] }}</span>
+                                    </div>
+                                </div>
+                            @else
+                                <div
+                                    class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[350px] overflow-y-auto pr-3 custom-scrollbar animate-in fade-in duration-1000">
+                                    @foreach($pendingWinners as $idx => $w)
+                                        <div
+                                            class="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 flex flex-col gap-1 hover:bg-white/20 transition-all group relative overflow-hidden">
+                                            <div
+                                                class="absolute -right-2 -top-2 opacity-[0.05] group-hover:opacity-[0.1] transition-opacity">
+                                                <x-heroicon-o-trophy class="w-16 h-16 text-white" />
+                                            </div>
+                                            <div class="flex items-center gap-2 mb-1">
+                                                <span
+                                                    class="text-[8px] font-black bg-yellow-400 text-[#2d7a8e] px-1.5 py-0.5 rounded shadow-sm">{{ $idx + 1 }}</span>
+                                                <span
+                                                    class="text-[9px] font-bold text-white/50 uppercase tracking-widest font-mono">CIF:
+                                                    {{ $w['cif'] }}</span>
+                                            </div>
+                                            <div
+                                                class="text-sm font-black text-white truncate group-hover:text-yellow-200 transition-colors uppercase">
+                                                {{ $w['participant']['participant_name'] }}</div>
+                                            <div class="flex items-center justify-between mt-2 pt-2 border-t border-white/5">
+                                                <span
+                                                    class="text-[9px] font-bold text-white/40 uppercase truncate max-w-[100px]">{{ $w['branch_name'] }}</span>
+                                                <span
+                                                    class="text-xs font-black font-mono text-yellow-300 drop-shadow-[0_0_10px_rgba(253,224,71,0.3)]">{{ $w['lucky_number'] }}</span>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                                <style>
+                                    .custom-scrollbar::-webkit-scrollbar {
+                                        width: 5px;
+                                    }
+
+                                    .custom-scrollbar::-webkit-scrollbar-track {
+                                        background: rgba(255, 255, 255, 0.05);
+                                        border-radius: 10px;
+                                    }
+
+                                    .custom-scrollbar::-webkit-scrollbar-thumb {
+                                        background: rgba(255, 255, 255, 0.2);
+                                        border-radius: 10px;
+                                    }
+                                </style>
+                            @endif
                         </div>
                         @if($isPreview)
-                            <div class="flex flex-col gap-2">
-                                <button wire:click="confirmWinner"
-                                    class="bg-white text-[#2d7a8e] px-6 py-3 rounded-xl font-black text-sm uppercase tracking-wider hover:bg-gray-100 transition-colors shadow-lg">
-                                    CONFIRM
+                            <div class="flex flex-col gap-3 min-w-[180px]">
+                                <button wire:click="confirmWinners"
+                                    class="group/btn relative bg-yellow-400 text-[#2d7a8e] px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-yellow-300 transition-all shadow-[0_10px_30px_rgba(250,204,21,0.3)] hover:-translate-y-1 active:translate-y-0 flex items-center justify-center gap-2">
+                                    <x-heroicon-s-check-circle class="w-5 h-5" />
+                                    CONFIRM ALL
                                 </button>
-                                <button wire:click="startDrawing"
-                                    class="bg-black/10 text-white px-6 py-3 rounded-xl font-black text-sm uppercase tracking-wider hover:bg-black/20 transition-colors border border-white/10 text-center">
-                                    RETRY
+                                <button wire:click="resetWinners"
+                                    onclick="return confirm('Are you sure you want to reset and redraw?')"
+                                    class="bg-white/10 text-white/80 px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-white/20 transition-all border border-white/10 hover:text-white flex items-center justify-center gap-2">
+                                    <x-heroicon-s-arrow-path class="w-4 h-4" />
+                                    RESET & REDRAW
                                 </button>
                             </div>
                         @endif
@@ -190,13 +300,28 @@
                         </div>
                     </div>
 
-                    @if(!$isPreview && $eventPrize->remaining_quantity > 0)
-                        <button wire:click="startDrawing"
-                            class="flex-1 md:flex-none px-10 py-4 bg-[#2d7a8e] text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-[#256678] transition-all shadow-lg hover:-translate-y-0.5 flex items-center justify-center gap-2">
-                            <x-heroicon-s-bolt class="w-5 h-5" />
-                            DRAW AGAIN
-                        </button>
-                    @endif
+                    <div class="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+                        <div class="flex space-x-2 mr-2">
+                            <button wire:click="exportCsv"
+                                class="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-lg text-[10px] font-black uppercase hover:bg-green-100 transition-colors border border-green-100 shadow-sm">
+                                <x-heroicon-o-document-text class="w-3.5 h-3.5" />
+                                CSV
+                            </button>
+                            <button wire:click="exportExcel"
+                                class="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-100 transition-colors border border-emerald-100 shadow-sm">
+                                <x-heroicon-o-table-cells class="w-3.5 h-3.5" />
+                                EXCEL
+                            </button>
+                        </div>
+
+                        @if(!$isPreview && $eventPrize->remaining_quantity > 0)
+                            <button wire:click="startDrawing"
+                                class="flex-1 md:flex-none px-10 py-4 bg-[#2d7a8e] text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-[#256678] transition-all shadow-lg hover:-translate-y-0.5 flex items-center justify-center gap-2">
+                                <x-heroicon-s-bolt class="w-5 h-5" />
+                                DRAW AGAIN
+                            </button>
+                        @endif
+                    </div>
                 </div>
 
                 <!-- Winners Table Split into 2 columns -->
@@ -223,12 +348,7 @@
                                             <tr class="hover:bg-slate-50/50 transition-colors animate-fade-in-up">
                                                 <td class="px-4 py-4">
                                                     <div class="flex flex-col">
-                                                        <span
-                                                            class="text-sm font-black text-slate-800">{{ \App\Utils\MaskHelper::name($winner['name']) }}</span>
-                                                        <span class="text-[10px] font-mono text-slate-400 tracking-tighter">
-                                                            {{ \App\Utils\MaskHelper::mask($winner['cif']) }} •
-                                                            {{ \App\Utils\MaskHelper::mask($winner['account']['account_number'] ?? 'N/A') }}
-                                                        </span>
+                                                        <span class="text-sm font-black text-slate-800">{{ $winner['name'] }}</span>
                                                     </div>
                                                 </td>
                                                 <td class="px-4 py-4 text-center">
@@ -237,8 +357,6 @@
                                                             class="inline-block px-2 py-1 bg-[#2d7a8e]/5 text-[#2d7a8e] rounded-lg font-black font-mono text-sm border border-[#2d7a8e]/10 shadow-sm leading-none mb-1">
                                                             {{ $winner['lucky_number'] }}
                                                         </span>
-                                                        <span
-                                                            class="text-[9px] font-mono text-slate-300 tracking-tighter">{{ $winner['winning_number'] }}</span>
                                                     </div>
                                                 </td>
                                                 <td class="px-4 py-4">

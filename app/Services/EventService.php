@@ -28,7 +28,7 @@ class EventService
 
             foreach ($participantIds->chunk(1000) as $chunk) {
                 $data = $chunk->map(fn($id) => [
-                    'event_id' => $targetEventId,
+                    'event_id' => $sourceEventId,
                     'participant_id' => $id,
                     'created_at' => $now,
                     'updated_at' => $now,

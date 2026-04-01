@@ -36,6 +36,7 @@ class BulkDrawing extends Component
     public bool $isPreview = false;
     public bool $enableRedraw = true;
     public $newWinners = [];
+    public $isSingleDrawingMode = false;
 
     #[Computed]
     public function paginatedWinners()
@@ -136,14 +137,17 @@ class BulkDrawing extends Component
         $this->processedCount = $batch->processed_winners;
 
         // Progressive loading: Update table while processing
+        if ($batch->total_to_process == 1) {
+            $this->isSingleDrawingMode = true;
+        }
+
         if (!$this->isStopping && $batch->results && count($batch->results) > 0) {
             $this->isPreview = true;
             $this->totalWinners = count($batch->results);
 
             // Show new results combined with existing winners for perspective
             $existingWinners = Winner::where('event_prize_id', $this->eventPrize->id)
-                ->orderBy('id', 'desc')
-                ->limit(10)
+                ->where('draw_session_id', $this->drawSessionId)
                 ->get()
                 ->map(fn(Winner $w) => $w->getDataBulk())
                 ->toArray();
@@ -156,9 +160,11 @@ class BulkDrawing extends Component
         if ($batch->status === 'COMPLETED' || $batch->status === 'CANCELLED') {
 
 
+            /* 
             if ($batch->status === 'COMPLETED' && !$this->isStopping && !$this->stopTriggeredAt) {
                 $this->stopTriggeredAt = time();
             }
+            */
 
             // If we are in stopping sequence, wait for 100% completion AND the 3s gap
             if ($this->isStopping || $this->stopTriggeredAt) {
@@ -209,15 +215,20 @@ class BulkDrawing extends Component
         }
     }
 
-    public function cancelBatch()
+    public function stopDrawing()
     {
         if (!$this->batchId)
             return;
 
         $batch = \App\Models\BulkDrawBatch::find($this->batchId);
         if ($batch && in_array($batch->status, ['PENDING', 'PROCESSING', 'COMPLETED'])) {
-            $batch->update(['status' => 'CANCELLED']);
-            $this->batchStatus = 'CANCELLED';
+            if ($batch->status !== 'COMPLETED') {
+                $batch->update(['status' => 'CANCELLED']);
+                $this->batchStatus = 'CANCELLED';
+            }
+
+            $this->isStopping = true;
+            $this->stopTriggeredAt = time();
 
             $this->dispatch('info', message: 'Stopping drawing process... Please wait for the reveal.');
         }
@@ -279,6 +290,7 @@ class BulkDrawing extends Component
                     'branch_name' => $winnerData['account']['branch']['branch_name'],
                     'branch_company_book' => $winnerData['account']['branch']['company_book'],
                     'branch_region' => $winnerData['account']['branch']['region'],
+                    'account_status' => $winnerData['account']['account_status'],
                 ]);
 
                 $this->eventPrize->decrement('remaining_quantity');
@@ -300,6 +312,87 @@ class BulkDrawing extends Component
     public function clearWinner()
     {
         $this->winners = [];
+    }
+    public function exportCsv()
+    {
+        return $this->downloadCsv();
+    }
+
+    public function exportExcel()
+    {
+        return $this->downloadCsv('xls');
+    }
+
+    protected function downloadCsv($extension = 'csv')
+    {
+        $exportData = collect($this->winners)->flatten(1);
+        if (empty($exportData) || count($exportData) == 0) {
+            $exportData = Winner::where('event_prize_id', $this->eventPrize->id)
+                ->where('draw_session_id', $this->drawSessionId)
+                ->get()
+                ->map(fn(Winner $w) => $w->getDataBulk());
+        }
+
+        if (empty($exportData) || $exportData->isEmpty()) {
+            return null;
+        }
+
+        $filename = "winners_" . str_replace([' ', '/', '\\'], '_', $this->eventPrize->prize->prize_name) . "_" . now()->format('Ymd_His') . "." . $extension;
+
+        if ($extension === 'xls') {
+            return response()->streamDownload(function () use ($exportData) {
+                echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+                <head><meta http-equiv="content-type" content="text/html; charset=utf-8"/></head>
+                <body><table border="1">
+                    <thead>
+                        <tr style="background-color: #f3f4f6;">
+                            <th>CIF</th>
+                            <th>Account Number</th>
+                            <th>Name</th>
+                            <th>Region</th>
+                            <th>Branch</th>
+                            <th>Lucky Number</th>
+                            <th>Points</th>
+                            <th>Drawn At</th>
+                        </tr>
+                    </thead>
+                    <tbody>';
+                foreach ($exportData as $row) {
+                    echo '<tr>
+                        <td>' . ($row['cif'] ?? '') . '</td>
+                        <td>' . ($row['account']['account_number'] ?? $row['account_number'] ?? '') . '</td>
+                        <td>' . ($row['name'] ?? '') . '</td>
+                        <td>' . ($row['region'] ?? '') . '</td>
+                        <td>' . ($row['branch_name'] ?? '') . '</td>
+                        <td>' . ($row['lucky_number'] ?? $row['winning_number'] ?? '') . '</td>
+                        <td>' . ($row['ticket']['total_points'] ?? 0) . '</td>
+                        <td>' . (isset($row['drawn_at']) ? $row['drawn_at'] : now()->format('Y-m-d H:i:s')) . '</td>
+                    </tr>';
+                }
+                echo '</tbody></table></body></html>';
+            }, $filename, ['Content-Type' => 'application/vnd.ms-excel']);
+        }
+
+        return response()->streamDownload(function () use ($exportData) {
+            $file = fopen('php://output', 'w');
+            fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF));
+
+            fputcsv($file, ['CIF', 'Account Number', 'Name', 'Region', 'Branch', 'Lucky Number', 'Points', 'Drawn At']);
+
+            foreach ($exportData as $row) {
+                fputcsv($file, [
+                    $row['cif'] ?? '',
+                    $row['account']['account_number'] ?? $row['account_number'] ?? '',
+                    $row['name'] ?? '',
+                    $row['region'] ?? '',
+                    $row['branch_name'] ?? '',
+                    $row['lucky_number'] ?? $row['winning_number'] ?? '',
+                    $row['ticket']['total_points'] ?? 0,
+                    isset($row['drawn_at']) ? $row['drawn_at'] : now()->format('Y-m-d H:i:s'),
+                ]);
+            }
+            fclose($file);
+        }, $filename);
     }
 
     public function render()

@@ -4,12 +4,8 @@ namespace App\Filament\Resources\Events\Widgets;
 
 use App\Models\Event;
 use App\Models\Participant;
-use App\Models\Account;
+use App\Models\LotteryTicket;
 use Carbon\Carbon;
-use Filament\Actions\CreateAction;
-use Filament\Forms\Components\Hidden;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Support\Enums\FontWeight;
@@ -35,26 +31,31 @@ class ParticipantTable extends TableWidget
             ->deferLoading()
             ->query(function () {
                 $query = Participant::query()
-                    ->select('participants.*')
                     ->with(['account.customer'])
-                    ->withCount('lotteryTickets');
+                    ->withCount('lotteryTickets')
+                    ->withSum([
+                        'lotteryTickets as active_points' => function ($query) {
+                            $query->where('status', LotteryTicket::STATUS_ACTIVE);
+                        }
+                    ], 'total_points');
 
                 if ($this->record) {
-                    if ($this->record->status == Event::STATUS_ACTIVE) {
-                        // For active events, use direct event_id filter
-                        $query->where('event_id', $this->record->id);
-                    } else {
-                        // For inactive events, use the pivot table
-                        $query->whereIn('id', function ($subQuery) {
+                    $statusEvent = $this->record->status;
+                    if ($statusEvent == Event::STATUS_COMPLETED && $this->record->participants()->exists()) {
+                        // For completed events, use the pivot table
+                        $query->whereIn('participants.id', function ($subQuery) {
                             $subQuery->select('participant_id')
                                 ->from('event_participant')
                                 ->where('event_id', $this->record->id);
                         });
+                    } else {
+                        // For active or other events, use direct event_id filter
+                        $query->where('participants.event_id', $this->record->id);
                     }
                 }
 
                 if (!empty($this->account_ids)) {
-                    $query->whereIn('account_id', $this->account_ids);
+                    $query->whereIn('participants.account_id', $this->account_ids);
                 }
 
                 // Filter by user branches
@@ -100,23 +101,9 @@ class ParticipantTable extends TableWidget
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('active_points')
                     ->label('Total Points')
-                    ->getStateUsing(function (Participant $record) {
-                        // Use a cached query to avoid N+1
-                        return DB::table('lottery_tickets')
-                            ->where('participant_id', $record->id)
-                            ->where('status', 'ACTIVE')
-                            ->sum('total_points');
-                    })
+                    ->default(0)
                     ->numeric()
-                    ->sortable(query: function (Builder $query, string $direction): Builder {
-                        return $query
-                            ->leftJoin('lottery_tickets', function ($join) {
-                                $join->on('participants.id', '=', 'lottery_tickets.participant_id')
-                                    ->where('lottery_tickets.status', '=', 'ACTIVE');
-                            })
-                            ->groupBy('participants.id')
-                            ->orderBy(DB::raw('SUM(COALESCE(lottery_tickets.total_points, 0))'), $direction);
-                    }),
+                    ->sortable(),
                 TextColumn::make('lottery_tickets_count')
                     ->label('Tickets')
                     ->badge()
@@ -164,14 +151,14 @@ class ParticipantTable extends TableWidget
                     ->label('View Tickets')
                     ->icon('heroicon-o-ticket')
                     ->color('info')
-                    ->modalHeading(fn(Participant $record) => "Lottery Tickets for {$record->account->customer->name} (Count: " . $record->lotteryTickets()->count() . ")")
+                    ->modalHeading(fn(Participant $record) => "Lottery Tickets for {$record->account->customer->name} (Count: " . ($record->lottery_tickets_count ?? 0) . ")")
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Close')
                     ->infolist(function (Participant $record) {
                         return [
                             TextEntry::make('tickets_count_summary')
                                 ->label('Tickets Found')
-                                ->state(fn(Participant $record) => $record->lotteryTickets()->count())
+                                ->state(fn(Participant $record) => $record->lottery_tickets_count ?? 0)
                                 ->weight(FontWeight::Bold)
                                 ->color('info'),
                             RepeatableEntry::make('lotteryTickets')

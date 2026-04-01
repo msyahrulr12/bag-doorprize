@@ -70,6 +70,7 @@ class ProcessBulkDrawJob implements ShouldQueue
                     'participants.participant_email',
                     'participants.participant_phone_number',
                     'accounts.account_number',
+                    'accounts.status as account_status',
                     // 'prizes.prize_name',
                     // 'prizes.id as prize_id',
                     // 'prizes.tier as prize_tier',
@@ -103,7 +104,7 @@ class ProcessBulkDrawJob implements ShouldQueue
 
             // 1.5 Fetch customers who are already in other active/completed batches for this event
             // to avoid duplicates if multiple batches are drawn or pending confirmation
-            $otherBatches = \App\Models\BulkDrawBatch::whereHas('eventPrize', function ($q) use ($eventId) {
+            $otherBatches = BulkDrawBatch::whereHas('eventPrize', function ($q) use ($eventId) {
                 $q->where('event_id', $eventId);
             })
                 ->whereIn('status', ['PENDING', 'PROCESSING', 'COMPLETED'])
@@ -164,6 +165,7 @@ class ProcessBulkDrawJob implements ShouldQueue
                             'branch_name' => $selectedTicket->branch_name,
                             'company_book' => $selectedTicket->branch_company_book,
                         ],
+                        'account_status' => $selectedTicket->account_status,
                     ],
                     'ticket' => [
                         'id' => $selectedTicket->id,

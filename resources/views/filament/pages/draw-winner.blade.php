@@ -97,48 +97,73 @@
     </div>
 
     @if($isDrawing)
-        <div x-data="{
-                                                                digits: '00000000',
-                                                                target: '{{ $pendingWinner['lucky_number'] }}',
-                                                                isStopping: false,
-                                                                init() {
-                                                                    let interval = setInterval(() => {
-                                                                        if (this.isStopping) return;
-                                                                        this.digits = Math.floor(Math.random() * 99999999).toString().padStart(8, '0');
-                                                                    }, 50);
+        <div wire:ignore wire:key="admin-draw-{{ now()->timestamp }}" x-data="{
+                                                                                                                         digits: '00000000',
+                                                                                                                         target: '{{ $pendingWinner['lucky_number'] }}',
+                                                                                                                         placeholderName: 'SEARCHING...',
+                                                                                                                         placeholderBranch: 'RANDOMIZING...',
+                                                                                                                         isStopping: false,
+                                                                                                                         init() {
+                                                                                                                             let interval = setInterval(() => {
+                                                                                                                                 if (this.isStopping) return;
+                                                                                                                                 this.digits = Math.floor(Math.random() * 99999999).toString().padStart(8, '0');
 
-                                                                    setTimeout(() => {
-                                                                        if(!this.isStopping) this.stop();
-                                                                    }, 5000);
-                                                                },
-                                                                stop() {
-                                                                    this.isStopping = true;
-                                                                    this.digits = this.target;
-                                                                    setTimeout(() => {
-                                                                        $wire.finishDrawing();
-                                                                    }, 1500); 
-                                                                }
-                                                            }"
-            class="mt-12 bg-gray-950 rounded-3xl shadow-2xl p-12 text-center relative overflow-hidden border border-white/10">
+                                                                                                                                 const names = ['Wibowo', 'Sari', 'Pratama', 'Lestari', 'Budi', 'Putri', 'Hidayat', 'Santoso', 'Kurniawan', 'Mulyani', 'Setiawan', 'Ramadhan', 'Wijaya', 'Utami'];
+                                                                                                                                 const branches = ['JAKARTA', 'SURABAYA', 'BANDUNG', 'MEDAN', 'MAKASSAR', 'SEMARANG', 'PALEMBANG', 'MALANG', 'BEKASI', 'TANGERANG'];
+                                                                                                                                 this.placeholderName = names[Math.floor(Math.random() * names.length)] + ' *** ' + names[Math.floor(Math.random() * names.length)];
+                                                                                                                                 this.placeholderBranch = branches[Math.floor(Math.random() * branches.length)];
+                                                                                                                             }, 50);
+                                                                                                                         },
+                                                                                                                         stop() {
+                                                                                                                             let self = this;
+                                                                                                                             self.isStopping = true;
+                                                                                                                             self.digits = self.target;
+                                                                                                                             setTimeout(() => {
+                                                                                                                                 $wire.finishDrawing();
+                                                                                                                             }, 1500); 
+                                                                                                                         }
+                                                                                                                     }"
+            class="mt-12 bg-gray-950 rounded-[3rem] shadow-2xl p-12 text-center relative overflow-hidden border border-white/10">
+
+            <!-- Abstract Background -->
+            <div class="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
+                <div class="absolute -top-24 -left-24 w-96 h-96 bg-primary-500/20 rounded-full blur-[120px]"></div>
+                <div
+                    class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary-500/10 rounded-full blur-[160px]">
+                </div>
+                <div class="absolute -bottom-24 -right-24 w-96 h-96 bg-blue-500/10 rounded-full blur-[120px]"></div>
+            </div>
+
             <div class="relative z-10">
                 <div
-                    class="inline-flex items-center gap-2 px-4 py-2 bg-primary-500/10 rounded-full border border-primary-500/20 mb-8">
+                    class="inline-flex items-center gap-2 px-4 py-2 bg-primary-500/10 rounded-full border border-primary-500/20 mb-10">
                     <span class="relative flex h-3 w-3">
                         <span
                             class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75"></span>
                         <span class="relative inline-flex rounded-full h-3 w-3 bg-primary-500"></span>
                     </span>
-                    <span class="text-primary-400 font-bold text-[10px] uppercase tracking-[0.3em]">Processing Draw
-                        Sequence</span>
+                    <span class="text-primary-400 font-bold text-[10px] uppercase tracking-[0.4em]">Weighted Randomization
+                        Engine Active</span>
                 </div>
 
-                <div class="flex justify-center items-center gap-3 mb-10">
+                <div class="flex justify-center items-center gap-2 md:gap-4 mb-12">
                     <template x-for="(digit, index) in digits.split('')" :key="index">
                         <div
-                            class="w-14 h-20 bg-gradient-to-b from-gray-800 to-gray-900 rounded-xl border border-white/5 flex items-center justify-center shadow-lg">
-                            <span class="text-5xl font-black font-mono text-white tracking-tighter" x-text="digit"></span>
+                            class="w-12 h-18 md:w-16 md:h-24 bg-gradient-to-b from-gray-800 to-gray-900 rounded-2xl border border-white/20 flex items-center justify-center shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+                            <span class="text-4xl md:text-6xl font-black font-mono text-white tracking-tighter"
+                                x-text="digit"></span>
                         </div>
                     </template>
+                </div>
+
+                <!-- Searching Info Card -->
+                <div x-show="!isStopping"
+                    class="mb-12 animate-pulse bg-white/5 p-8 rounded-3xl border border-white/10 inline-block min-w-[350px] backdrop-blur-md">
+                    <div class="text-[10px] font-black uppercase text-primary-400 tracking-[0.3em] mb-3">Analyzing Eligible
+                        Participants</div>
+                    <div class="text-3xl font-black text-white mb-2" x-text="placeholderName"></div>
+                    <div class="inline-block px-4 py-1.5 bg-primary-500/20 rounded-full text-primary-300 text-[10px] font-black uppercase tracking-[0.2em] border border-primary-500/30"
+                        x-text="placeholderBranch"></div>
                 </div>
 
                 <div class="max-w-xs mx-auto">
@@ -184,58 +209,71 @@
                         </div>
                     </div>
                     <h3 class="text-3xl font-black mb-1">CONGRATULATIONS!</h3>
-                    <p class="text-white/80 mb-6 text-lg">The ticket winner is <span
-                            class="text-white font-mono bg-white/20 px-2 py-1 rounded">#{{ $winner['lucky_number'] }}</span>
+                    <p class="text-white/80 mb-6 text-lg">
+                        @if(empty($pendingWinners) || count($pendingWinners) <= 1)
+                            The ticket winner is <span
+                                class="text-white font-mono bg-white/20 px-2 py-1 rounded">#{{ $winner['lucky_number'] }}</span>
+                        @else
+                            <span
+                                class="text-white font-black bg-white/20 px-3 py-1 rounded text-2xl animate-pulse">{{ count($pendingWinners) }}
+                                Winners Found</span>
+                        @endif
                     </p>
-                    <p class="text-white/80 mb-6 text-lg">The ticket range <span
-                            class="text-white font-mono bg-white/20 px-2 py-1 rounded">#{{ $winner['winning_number'] }}</span>
-                        belongs to:</p>
-
-                    <div class="space-y-1">
-                        <div class="text-5xl font-black tracking-tight leading-tight">
-                            {{ \App\Utils\MaskHelper::name($winner['participant']->participant_name) }}
+                    <div class="space-y-6 mt-6">
+                        <div class="text-5xl font-black tracking-tighter leading-tight drop-shadow-lg">
+                            @if(empty($pendingWinners) || count($pendingWinners) <= 1)
+                                {{ $winner['participant']->participant_name }}
+                            @else
+                                <div class="text-2xl font-bold opacity-90">First Winner:
+                                    {{ $winner['participant']->participant_name }}
+                                </div>
+                                <div class="text-sm opacity-70 italic mt-2">(See full list in the table below)</div>
+                            @endif
                         </div>
-                        <div class="flex flex-wrap justify-center md:justify-start gap-4 mt-4">
-                            <div class="bg-black/20 px-3 py-1 rounded-lg backdrop-blur-sm border border-white/10">
-                                <span class="text-white/60 text-xs font-bold uppercase block">CIF Number</span>
-                                <span
-                                    class="font-mono text-lg">{{ \App\Utils\MaskHelper::mask($winner['participant']->participant_cif) }}</span>
-                            </div>
-                            <div class="bg-black/20 px-3 py-1 rounded-lg backdrop-blur-sm border border-white/10">
-                                <span class="text-white/60 text-xs font-bold uppercase block">Account</span>
-                                <span
-                                    class="font-mono text-lg">{{ \App\Utils\MaskHelper::mask($winner['participant']->participant_account_number) }}</span>
-                            </div>
+                        <div class="flex items-center gap-4 justify-center md:justify-start">
+                            <x-filament::link wire:click="exportCsv" color="success"
+                                class="bg-white/10 px-4 py-2 rounded-xl border border-white/20 text-xs font-black uppercase tracking-widest hover:bg-white/20 cursor-pointer backdrop-blur-md">
+                                <span class="flex items-center gap-2">
+                                    <x-heroicon-o-document-text class="w-4 h-4 text-green-400" />
+                                    CSV
+                                </span>
+                            </x-filament::link>
+                            <x-filament::link wire:click="exportExcel" color="success"
+                                class="bg-white/10 px-4 py-2 rounded-xl border border-white/20 text-xs font-black uppercase tracking-widest hover:bg-white/20 cursor-pointer backdrop-blur-md">
+                                <span class="flex items-center gap-2">
+                                    <x-heroicon-o-table-cells class="w-4 h-4 text-emerald-400" />
+                                    EXCEL
+                                </span>
+                            </x-filament::link>
                         </div>
                     </div>
                 </div>
 
-                @if ($isPreview && $enableRedraw)
+                @if ($isPreview)
                     <div class="flex flex-col gap-3 min-w-[220px]">
-                        <x-filament::button wire:click="confirmWinner" color="white" size="xl"
+                        <x-filament::button wire:click="confirmWinners" color="white" size="xl"
                             class="group relative overflow-hidden font-black text-primary-700 hover:text-primary-800 shadow-xl transition-all hover:-translate-y-1">
                             <span class="relative z-10 flex items-center justify-center gap-2">
                                 <x-heroicon-s-check-circle class="w-6 h-6" />
-                                CONFIRM WINNER
+                                CONFIRM ALL
                             </span>
                             <div class="absolute inset-0 bg-yellow-300 opacity-0 group-hover:opacity-10 transition-opacity">
                             </div>
                         </x-filament::button>
 
-                        <div class="grid grid-cols-2 gap-2 mt-2">
-                            <x-filament::button wire:click="draw" color="white" variant="link"
-                                class="text-white bg-white/10 hover:bg-white/20 font-bold border border-white/20 py-2">
+                        <div class="flex flex-col gap-2 mt-2">
+                            <x-filament::button wire:click="resetWinners" color="danger" variant="outline"
+                                class="w-full font-bold py-2 border border-white/20 hover:bg-red-500/10 text-white">
                                 <span class="flex items-center gap-1.5 justify-center">
-                                    <x-heroicon-o-arrow-path class="w-4 h-4" />
-                                    RE-DRAW
+                                    <x-heroicon-s-arrow-path class="w-4 h-4" />
+                                    RESET & REDRAW
                                 </span>
                             </x-filament::button>
 
                             <x-filament::button wire:click="clearWinner" color="white" variant="link"
-                                class="text-white bg-white/10 hover:bg-white/20 font-bold border border-white/20 py-2">
+                                class="text-white/60 hover:text-white font-bold py-1 text-[10px] uppercase tracking-widest">
                                 <span class="flex items-center gap-1.5 justify-center">
-                                    <x-heroicon-o-x-mark class="w-4 h-4" />
-                                    CANCEL
+                                    CLOSE VIEW
                                 </span>
                             </x-filament::button>
                         </div>
@@ -304,11 +342,11 @@
                                                 <td class="px-4 py-3">
                                                     <div class="flex flex-col">
                                                         <span
-                                                            class="font-bold text-xs text-gray-900 dark:text-white leading-tight">{{ \App\Utils\MaskHelper::name($winner['name']) }}</span>
+                                                            class="font-bold text-xs text-gray-900 dark:text-white leading-tight">{{ $winner['name'] }}</span>
                                                         <span
-                                                            class="text-[10px] text-gray-500 font-mono mt-0.5">{{ \App\Utils\MaskHelper::mask($winner['cif']) }}
+                                                            class="text-[10px] text-gray-500 font-mono mt-0.5">{{ $winner['cif'] }}
                                                             •
-                                                            {{ \App\Utils\MaskHelper::mask($winner['account']['account_number'] ?? 'N/A') }}</span>
+                                                            {{ $winner['account']['account_number'] ?? 'N/A' }}</span>
                                                     </div>
                                                 </td>
                                                 <td class="px-4 py-3 text-center whitespace-nowrap">
@@ -323,19 +361,6 @@
                                                             class="mb-1.5 pb-1.5 border-b border-gray-100 dark:border-gray-800 items-center">
                                                             <span
                                                                 class="text-[10px] font-black text-primary-600 dark:text-primary-400 uppercase tracking-tighter">{{ $winner['account']['branch']['branch_name'] ?? ($winner['branch_name'] ?? 'N/A') }}</span>
-                                                        </div>
-                                                        <div class="flex items-center gap-1.5">
-                                                            <span
-                                                                class="text-[10px] font-bold text-gray-400 uppercase">Range:</span>
-                                                            <span
-                                                                class="text-[10px] font-medium text-gray-600 dark:text-gray-400">{{ $winner['ticket']['range_start'] ?? 'N/A' }}
-                                                                - {{ $winner['ticket']['range_end'] ?? 'N/A' }}</span>
-                                                        </div>
-                                                        <div class="flex items-center gap-1.5 mt-0.5">
-                                                            <span
-                                                                class="text-[10px] font-bold text-gray-400 uppercase">Points:</span>
-                                                            <span
-                                                                class="text-[10px] font-black text-primary-600 dark:text-primary-400">{{ number_format($winner['ticket']['total_points'] ?? 0) }}</span>
                                                         </div>
                                                     </div>
                                                 </td>
