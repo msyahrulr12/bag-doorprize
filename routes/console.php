@@ -23,3 +23,5 @@ Schedule::command('app:export-winners')->dailyAt('01:00');
 // PDF Generation (Heavy task, scheduled later to ensure all point ingestion is complete)
 Schedule::command('app:generate-bank-statement-pdf-command')->cron(env('SCHEDULER_GENERATE_BANK_STATEMENT', '0 10 4 * *'));
 
+// Status Maintenance
+Schedule::command('app:update-session-event-status')->everyMinute();

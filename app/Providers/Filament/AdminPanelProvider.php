@@ -29,7 +29,7 @@ class AdminPanelProvider extends PanelProvider
         $enabledModules = Module::allEnabled();
 
         if (env('APP_ENV') !== 'local') {
-            URL::forceScheme('https');
+            URL::forceScheme(env('APP_PROTOCOL', 'https'));
         }
 
         $panel

@@ -248,19 +248,18 @@
                             </span>
                         </x-filament::button>
 
-                        <div class="grid grid-cols-2 gap-2">
-                            <x-filament::button wire:click="draw" color="white" variant="link"
-                                class="text-white bg-white/10 hover:bg-white/20 font-bold border border-white/20 py-2 rounded-xl">
+                        <div class="flex flex-col gap-2">
+                            <x-filament::button wire:click="resetWinners" color="danger" variant="outline"
+                                class="w-full font-bold py-2 border border-white/20 hover:bg-red-500/10 text-white rounded-xl">
                                 <span class="flex items-center gap-1.5 justify-center">
-                                    <x-heroicon-o-arrow-path class="w-4 h-4" />
-                                    REDRAW
+                                    <x-heroicon-s-arrow-path class="w-4 h-4" />
+                                    RESET & REDRAW
                                 </span>
                             </x-filament::button>
 
                             <x-filament::button wire:click="clearWinner" color="white" variant="link"
-                                class="text-white bg-white/10 hover:bg-white/20 font-bold border border-white/20 py-2 rounded-xl">
-                                <span class="flex items-center gap-1.5 justify-center text-red-100">
-                                    <x-heroicon-o-x-mark class="w-4 h-4" />
+                                class="text-white/60 hover:text-white font-bold py-1 text-[10px] uppercase tracking-widest">
+                                <span class="flex items-center gap-1.5 justify-center">
                                     CANCEL
                                 </span>
                             </x-filament::button>

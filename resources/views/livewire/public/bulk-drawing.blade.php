@@ -65,9 +65,9 @@
 
     <!-- Main Content Area -->
     <div class="relative z-10 w-full max-w-5xl">
-        @if ($batchId)
-            <!-- Loading State with Grand Animation -->
-            <div wire:poll.2000ms="checkBatchStatus"
+        @if ($isDrawing)
+            <!-- Loading State with Infinite Shuffling Animation -->
+            <div wire:poll.1500ms="checkBatchStatus"
                 class="bg-white border border-slate-200 rounded-[2.5rem] p-10 md:p-16 shadow-2xl shadow-[#2d7a8e]/10 flex flex-col items-center relative overflow-hidden">
 
                 <!-- Inner Pattern -->
@@ -91,13 +91,13 @@
 
                 <div class="relative z-10 text-center uppercase tracking-tighter mb-8">
                     <h2 class="text-3xl md:text-4xl font-black text-slate-900 mb-2 uppercase text-center">
-                        {{ $isStopping || $stopTriggeredAt ? 'Finalizing Results' : 'System is Drawing' }}
+                        {{ $isStopping ? 'Finalizing Results' : 'System is Drawing' }}
                     </h2>
                     <div
                         class="inline-flex items-center gap-2 px-3 py-1 bg-[#2d7a8e]/10 rounded-full border border-[#2d7a8e]/20">
                         <span class="animate-ping w-1.5 h-1.5 bg-[#2d7a8e] rounded-full"></span>
                         <span class="text-[10px] font-black text-[#2d7a8e] uppercase tracking-widest">
-                            {{ $isStopping || $stopTriggeredAt ? 'Wrapping up the drawing sequence' : 'Real-time Weighted Randomization' }}
+                            {{ $isStopping ? 'Wrapping up the drawing sequence' : 'Real-time Weighted Randomization' }}
                         </span>
                     </div>
                 </div>
@@ -107,7 +107,7 @@
                         <div class="flex items-center gap-2">
                             <x-filament::loading-indicator class="w-4 h-4 text-[#2d7a8e]" />
                             <span class="text-[10px] font-black uppercase text-[#2d7a8e] tracking-widest">
-                                {{ $processedCount }} / {{ $totalToProcess }} WINNERS FOUND
+                                {{ $processedCount }} / {{ $totalToProcess }} WINNERS PREPARED
                             </span>
                         </div>
                         <span
@@ -148,6 +148,11 @@
                             <x-heroicon-s-bolt class="w-7 h-7 group-hover:animate-bounce" />
                             STOP DRAWING
                         </button>
+                    </div>
+                @else
+                    <div class="relative z-10 mt-4 flex items-center gap-3 text-slate-400 font-black uppercase text-xs animate-pulse">
+                         <x-filament::loading-indicator class="w-4 h-4" />
+                         Finalizing...
                     </div>
                 @endif
             </div>
@@ -227,14 +232,16 @@
                         </div>
 
                         @if ($isPreview && !$alreadyConfirmed)
-                            <button wire:click="confirmWinner"
-                                class="flex-1 md:flex-none px-10 py-4 bg-[#2d7a8e] text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-[#256678] transition-all shadow-lg hover:-translate-y-0.5">
-                                CONFIRM ALL
-                            </button>
-                            <button wire:click="draw"
-                                class="flex-1 md:flex-none px-8 py-4 bg-slate-100 text-slate-600 rounded-xl font-black text-sm uppercase tracking-wider hover:bg-slate-200 transition-all text-center border border-slate-200">
-                                RE-DRAW
-                            </button>
+                            <div class="flex items-center gap-2">
+                                <button wire:click="confirmWinners"
+                                    class="flex-1 md:flex-none px-10 py-4 bg-[#2d7a8e] text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-[#256678] transition-all shadow-lg hover:-translate-y-0.5 whitespace-nowrap">
+                                    CONFIRM ALL
+                                </button>
+                                <button wire:click="resetWinners"
+                                    class="flex-1 md:flex-none px-8 py-4 bg-red-50 text-red-600 rounded-xl font-black text-sm uppercase tracking-wider hover:bg-red-100 transition-all text-center border border-red-100 whitespace-nowrap">
+                                    RESET & REDRAW
+                                </button>
+                            </div>
                         @elseif(!$isPreview && $eventPrize->remaining_quantity > 0)
                             <button wire:click="draw"
                                 class="flex-1 md:flex-none px-10 py-4 bg-[#2d7a8e] text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-[#256678] transition-all shadow-lg hover:-translate-y-0.5 flex items-center justify-center gap-2">
@@ -285,8 +292,8 @@
                         </div>
                     @endif
                 @else
-                    <!-- Winners Table Split into 2 columns -->
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Winners Table Split into 3 columns -->
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         @foreach($winners as $chunkIndex => $winnerChunk)
                             <div class="overflow-hidden border border-slate-100 rounded-3xl shadow-sm bg-white">
                                 <div class="max_h-[50vh] overflow-y-auto scrollbar-thin">
@@ -309,25 +316,22 @@
                                                 <tr class="hover:bg-slate-50/50 transition-colors animate-fade-in-up">
                                                     <td class="px-4 py-4">
                                                         <div class="flex flex-col">
-                                                            <span class="text-sm font-black text-slate-800">{{ $winner['name'] }}</span>
-                                                            <span class="text-[10px] font-mono text-slate-400 tracking-tighter">
-                                                                {{ $winner['branch_name'] ?? 'N/A' }}
-                                                            </span>
+                                                            <span class="text-xs font-black text-slate-800">{{ $winner['name'] }}</span>
+
                                                         </div>
                                                     </td>
                                                     <td class="px-4 py-4 text-center">
                                                         <div class="flex flex-col items-center">
                                                             <span
-                                                                class="inline-block px-2 py-1 bg-[#2d7a8e]/5 text-[#2d7a8e] rounded-lg font-black font-mono text-sm border border-[#2d7a8e]/10 shadow-sm leading-none mb-1">
+                                                                class="inline-block px-2 py-1 bg-[#2d7a8e]/5 text-[#2d7a8e] rounded-lg font-black font-mono text-xs border border-[#2d7a8e]/10 shadow-sm leading-none mb-1">
                                                                 {{ $winner['lucky_number'] }}
                                                             </span>
-                                                            <span
-                                                                class="text-[9px] font-mono text-slate-300 tracking-tighter">{{ $winner['winning_number'] }}</span>
+
                                                         </div>
                                                     </td>
                                                     <td class="px-4 py-4">
                                                         <span
-                                                            class="text-[10px] font-bold text-slate-500 uppercase tracking-tight line-clamp-1">
+                                                            class="text-[10px] font-bold text-slate-500 uppercase tracking-tight text-xs">
                                                             {{ $winner['account']['branch']['branch_name'] ?? ($winner['branch_name'] ?? 'N/A') }}
                                                         </span>
                                                     </td>
