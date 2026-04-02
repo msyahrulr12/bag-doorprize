@@ -6,6 +6,7 @@ use App\Helper\DateHelper;
 use App\Models\Setting;
 use App\Models\Customer;
 use App\Jobs\GenerateBankStatementJob;
+use App\Models\Account;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -44,7 +45,10 @@ class GenerateBankStatementPDFCommand extends Command
         $mergePdfBankStatement = (bool) (Setting::where('key', 'merge_pdf_bank_statement')->first()->value ?? false);
         $t24Path = env('CORE_T24_PATH_STATEMENT');
 
-        $query = Customer::query();
+        $query = Customer::query()->whereHas('accounts', function($subQuery) {
+            $subQuery->where('status', Account::STATUS_ACTIVE);
+        });
+
         $limitAccountNumbers = null;
 
         if ($accountNumbersOptions && $accountNumbersOptions !== '') {
