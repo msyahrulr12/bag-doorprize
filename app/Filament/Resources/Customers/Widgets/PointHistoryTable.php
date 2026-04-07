@@ -134,7 +134,8 @@ class PointHistoryTable extends TableWidget
             ])
             ->summaries(
                 pageCondition: false
-            );
+            )
+            ->paginated();
         ;
     }
 }

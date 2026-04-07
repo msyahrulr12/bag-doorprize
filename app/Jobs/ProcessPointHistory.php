@@ -115,16 +115,16 @@ class ProcessPointHistory implements ShouldQueue
             if (!$customerId || !$branchId || !$productId || !$accNo)
                 continue;
 
-            $inactivMarker = $customer['inactiv_marker'] ?? null;
-            $excludeFlag = $customer['exclude_flag'] ?? null;
-            $confiFlag = $customer['confi_flag'] ?? null;
+            $inactivMarker = $customer['inactiv_marker'] ?? ($customer['inactivMarker'] ?? null);
+            $excludeFlag = $customer['exclude_flag'] ?? ($customer['excludeFlag'] ?? null);
+            $confiFlag = $customer['confi_flag'] ?? ($customer['confiFlag'] ?? null);
 
             $accountStatus = null;
-            if ($confiFlag !== null && $confiFlag !== '') {
+            if ($confiFlag !== null && $confiFlag !== '' && $confiFlag !== 'N') {
                 $accountStatus = Account::STATUS_CONFI;
-            } elseif ($inactivMarker !== null && $inactivMarker !== '') {
+            } elseif ($inactivMarker !== null && $inactivMarker !== '' && $inactivMarker !== 'N') {
                 $accountStatus = Account::STATUS_INACTIVE;
-            } elseif ($excludeFlag !== null && $excludeFlag !== '') {
+            } elseif ($excludeFlag !== null && $excludeFlag !== '' && $excludeFlag !== 'N') {
                 $accountStatus = Account::STATUS_EXCLUDE;
             } else {
                 $accountStatus = Account::STATUS_ACTIVE;
@@ -138,8 +138,8 @@ class ProcessPointHistory implements ShouldQueue
                 'account_number' => $accNo,
                 'account_type' => $customer['jenis_rekening'],
                 'account_opening_date' => $customer['account_opening_date'] ?? null,
-                'account_opening_balance' => (float) ($customer['account_opening_balance'] ?? 0),
-                'current_balance' => (float) ($customer['avgbal_tab'] ?? ($customer['avg_balance'] ?? 0)),
+                'account_opening_balance' => $this->parseAmount($customer['account_opening_balance'] ?? 0),
+                'current_balance' => $this->parseAmount($customer['avgbal_tab'] ?? ($customer['avg_balance'] ?? 0)),
                 'created_at' => $now,
                 'updated_at' => $now,
                 'status' => $accountStatus,
@@ -147,7 +147,7 @@ class ProcessPointHistory implements ShouldQueue
         }
 
         if (!empty($upserts)) {
-            Account::upsert(array_values($upserts), ['account_number'], ['customer_id', 'branch_id', 'product_id', 'account_opening_date', 'account_opening_balance', 'current_balance', 'updated_at']);
+            Account::upsert(array_values($upserts), ['account_number'], ['customer_id', 'branch_id', 'product_id', 'account_opening_date', 'account_opening_balance', 'current_balance', 'updated_at', 'status']);
         }
     }
 
@@ -165,14 +165,8 @@ class ProcessPointHistory implements ShouldQueue
         $now = now();
 
         if ($this->type === 'etb') {
-            $baseDate = Carbon::create($baseYear, $baseMonth, 1);
-            $stopDate = Carbon::create($prevYear, $prevMonth, 1);
-
-            // Check existing EARN records in range [base, prev].
-            // Must filter to EARN type only — EXPIRED records must not falsely mark a
-            // month as covered, which would suppress gap-fill and break prev-month lookups.
+            // Check existing records in range [base, prev] across ANY type to feed anomaly detection. 
             $existing = PointHistory::whereIn('account_id', array_values($accountMap))
-                ->where('type', PointHistory::POINT_TYPE_EARN)
                 ->where('year', '>=', $baseYear)
                 ->where('year', '<=', $prevYear)
                 ->get(['account_id', 'month', 'year']);
@@ -181,46 +175,16 @@ class ProcessPointHistory implements ShouldQueue
             foreach ($existing as $rec) {
                 $existingMap[$rec->account_id][$rec->year][$rec->month] = true;
             }
-
-            $gapRecords = [];
-            foreach (array_values($accountMap) as $accId) {
-                $tempDate = $baseDate->copy();
-                while ($tempDate->lessThanOrEqualTo($stopDate)) {
-                    $m = $tempDate->month;
-                    $y = $tempDate->year;
-                    if (!isset($existingMap[$accId][$y][$m])) {
-                        $uniqueKey = "ph_sys_{$accId}_{$m}_{$y}_" . PointHistory::POINT_TYPE_EARN;
-                        $gapRecords[] = [
-                            'account_id' => $accId,
-                            'amount' => 0,
-                            'month' => $m,
-                            'year' => $y,
-                            'points' => 0,
-                            'type' => PointHistory::POINT_TYPE_EARN,
-                            'description' => "BASE COMPARISON DATA (GAP FILL)",
-                            'source' => 'SYSTEM',
-                            'unique_key' => $uniqueKey,
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ];
-                    }
-                    $tempDate->addMonth();
-                }
-            }
-
-            if (!empty($gapRecords)) {
-                foreach (array_chunk($gapRecords, 500) as $chunk) {
-                    PointHistory::upsert($chunk, ['unique_key'], ['amount', 'points', 'updated_at']);
-                }
-            }
         }
 
         // Fetch prev-month amounts from EARN records only.
         // Using EXPIRED amounts for growth comparison would produce wrong (usually negative) growth.
         $prevAmounts = PointHistory::whereIn('account_id', array_values($accountMap))
-            ->where('type', PointHistory::POINT_TYPE_EARN)
             ->where('month', $prevMonth)
             ->where('year', $prevYear)
+            ->where('description', '!=', 'BASE COMPARISON DATA (GAP FILL)') // Ignore phantom zero-balance records
+            ->orderBy('amount', 'desc') 
+            ->get(['amount', 'account_id'])
             ->pluck('amount', 'account_id')
             ->toArray();
 
@@ -238,8 +202,24 @@ class ProcessPointHistory implements ShouldQueue
         $anomalyRecords = [];
         $accountsToReset = [];
         $now = now();
-        $divider = (float) ($this->settings['point_divider'] ?? 100000);
-        $threshold = (float) ($this->settings['threshold_reduction_balance'] ?? 100000);
+        
+        $divider = $this->parseAmount($this->settings['point_divider'] ?? 100000);
+        $threshold = $this->parseAmount($this->settings['threshold_reduction_balance'] ?? 100000);
+
+        // Fetch current cumulative points from ledger to ensure a full reset on expiration
+        // Exclude current month/year to make it re-run safe for the same batch
+        $currentLedgerPoints = PointHistory::whereIn('account_id', array_values($accountMap))
+            ->where(function ($q) {
+                $q->where('year', '<', $this->year)
+                    ->orWhere(function ($q2) {
+                        $q2->where('year', $this->year)
+                            ->where('month', '<', $this->month);
+                    });
+            })
+            ->selectRaw('account_id, SUM(points) as total')
+            ->groupBy('account_id')
+            ->pluck('total', 'account_id')
+            ->toArray();
 
         foreach ($customers as $customer) {
             $accNo = $customer['account_number'] ?? ($customer['ac_id'] ?? null);
@@ -247,7 +227,7 @@ class ProcessPointHistory implements ShouldQueue
             if (!$accId)
                 continue;
 
-            $currAmt = (float) ($customer['avgbal_tab'] ?? ($customer['avg_balance'] ?? 0));
+            $currAmt = $this->parseAmount($customer['avgbal_tab'] ?? ($customer['avg_balance'] ?? 0));
             $prevAmt = (float) ($prevAmounts[$accId] ?? 0);
             $hasPrev = isset($prevAmounts[$accId]);
 
@@ -278,9 +258,9 @@ class ProcessPointHistory implements ShouldQueue
             $growth = $currAmt - $prevAmt;
 
             $status = $customer['status'] ?? null;
-            $inactivMarker = $customer['inactiv_marker'] ?? null;
-            $excludeFlag = $customer['exclude_flag'] ?? null;
-            $confiFlag = $customer['confi_flag'] ?? null;
+            $inactivMarker = $customer['inactiv_marker'] ?? ($customer['inactivMarker'] ?? null);
+            $excludeFlag = $customer['exclude_flag'] ?? ($customer['excludeFlag'] ?? null);
+            $confiFlag = $customer['confi_flag'] ?? ($customer['confiFlag'] ?? null);
 
             $type = PointHistory::POINT_TYPE_EARN;
             $typeText = "BERTAMBAH";
@@ -289,7 +269,7 @@ class ProcessPointHistory implements ShouldQueue
             // Base period: no comparison possible, points are always 0
             if ($this->month === $baseMonth && $this->year === $baseYear) {
                 $points = 0;
-            } elseif (($inactivMarker !== null && $inactivMarker !== '') || ($excludeFlag !== null && $excludeFlag !== '') || ($confiFlag !== null && $confiFlag !== '')) {
+            } elseif (($inactivMarker !== null && $inactivMarker !== '' && $inactivMarker !== 'N') || ($excludeFlag !== null && $excludeFlag !== '' && $excludeFlag !== 'N') || ($confiFlag !== null && $confiFlag !== '' && $confiFlag !== 'N')) {
                 $pid = $participants[$accId]->id ?? null;
                 $activePoints = $pid ? ($activeTicketPoints[$pid] ?? 0) : 0;
 
@@ -311,9 +291,14 @@ class ProcessPointHistory implements ShouldQueue
                 // who also registered accounts in NTB — fall through to normal calculation.
                 $points = 0;
             } else {
-                if ($growth < 0 && abs($growth) > $threshold) {
+                // If growth is negative, we reset all points. 
+                // Removed threshold check to allow any decrease to trigger a reset as requested by client.
+                if ($growth < 0) {
                     $pid = $participants[$accId]->id ?? null;
-                    $points = $pid ? -($activeTicketPoints[$pid] ?? 0) : 0;
+                    // Reset ALL points in ledger for this account
+                    $ledgerSum = (int) ($currentLedgerPoints[$accId] ?? 0);
+                    $points = $ledgerSum > 0 ? -$ledgerSum : 0;
+                    
                     $type = PointHistory::POINT_TYPE_EXPIRED;
                     $typeText = "BERKURANG";
                     if ($pid)
@@ -321,7 +306,7 @@ class ProcessPointHistory implements ShouldQueue
                 } elseif ($growth > 0) {
                     $openingPoint = 0;
                     if ($this->type === 'ntb') {
-                        $openingPoint = (float) ($customer['account_opening_balance'] ?? 0) >= ($this->settings['min_opening_balance'] ?? 500000) ? (int) ($this->settings['base_point_ntb'] ?? 10) : 0;
+                        $openingPoint = $this->parseAmount($customer['account_opening_balance'] ?? 0) >= ($this->settings['min_opening_balance'] ?? 500000) ? (int) ($this->settings['base_point_ntb'] ?? 10) : 0;
                     }
 
                     $points = (int) floor($growth / $divider) + $openingPoint;
@@ -332,8 +317,10 @@ class ProcessPointHistory implements ShouldQueue
 
             // Create a unique key for the batch based on the upsert columns
             // For SYSTEM imports, the key is stable to enable upsert idempotency.
-            $batchKey = "{$accId}-{$this->month}-{$this->year}-{$type}";
-            $uniqueKey = "ph_sys_{$accId}_{$this->month}_{$this->year}_{$type}";
+            // We removed {type} from the key to ensure only one system record exists per account/month/year,
+            // even if the type changes during a re-run.
+            $batchKey = "{$accId}-{$this->month}-{$this->year}";
+            $uniqueKey = "ph_sys_{$accId}_{$this->month}_{$this->year}";
             $batchPh[$batchKey] = [
                 'account_id' => $accId,
                 'amount' => $currAmt,
@@ -408,5 +395,27 @@ class ProcessPointHistory implements ShouldQueue
             ->whereIn('account_id', array_values($accountMap))
             ->pluck('id', 'account_id')
             ->toArray();
+    }
+
+    private function parseAmount($value): float
+    {
+        if (is_numeric($value)) {
+            return (float) $value;
+        }
+
+        if (empty($value)) {
+            return 0.0;
+        }
+
+        // Handle Indonesian format: 1.234.567,89
+        // 1. Remove all dots (thousands)
+        // 2. Replace comma with dot (decimal)
+        $clean = str_replace('.', '', $value);
+        $clean = str_replace(',', '.', $clean);
+
+        // If it still contains non-numeric chars (except dot/minus), try to strip them
+        $clean = preg_replace('/[^0-9.-]/', '', $clean);
+
+        return (float) $clean;
     }
 }

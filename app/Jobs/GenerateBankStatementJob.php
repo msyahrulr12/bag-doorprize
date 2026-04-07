@@ -35,7 +35,7 @@ class GenerateBankStatementJob implements ShouldQueue
         private string $monthName,
         private Carbon $currentDate,
         private bool $mergePdfBankStatement,
-        private string $t24Path,
+        private ?string $t24Path = null,
         ?array $limitAccountNumbers = null
     ) {
         $this->limitAccountNumbers = $limitAccountNumbers;
@@ -52,11 +52,7 @@ class GenerateBankStatementJob implements ShouldQueue
         $limitAccountNumbers = $this->limitAccountNumbers;
 
         $customer = Customer::with([
-            'accounts' => function ($query) use ($limitAccountNumbers) {
-                if ($limitAccountNumbers) {
-                    $query->whereIn('account_number', $limitAccountNumbers);
-                }
-            },
+            'accounts',
             'accounts.branch',
             'accounts.participants',
             'accounts.participants.lotteryTickets',
@@ -143,22 +139,17 @@ class GenerateBankStatementJob implements ShouldQueue
         }
 
         ksort($tempAggregated);
-        $runningSaldo = 0;
         $allCoupons = [];
         foreach ($tempAggregated as $item) {
             $monthLabel = DateHelper::MONTHS[$item['month']] ?? 'N/A';
 
-            $runningSaldo += ($item['penambahan'] - $item['pengurangan']);
-            if ($runningSaldo < 0) {
-                $runningSaldo = 0;
-            }
-
+            $rowNet = ($item['penambahan'] - $item['pengurangan']);
             $allCoupons[] = [
                 'periode' => $monthLabel,
                 'penambahan' => number_format($item['penambahan'], 0, ',', '.'),
                 'pengurangan' => number_format($item['pengurangan'], 0, ',', '.'),
                 'nomor' => implode('<br>', array_unique($item['nomor'])),
-                'saldo' => number_format($runningSaldo, 0, ',', '.'),
+                'saldo' => number_format($rowNet, 0, ',', '.'),
                 'keterangan' => implode('<br>', array_unique($item['keterangan'])),
             ];
         }
@@ -178,20 +169,19 @@ class GenerateBankStatementJob implements ShouldQueue
         $totalPointDescriptionsAggregate = "";
         foreach ($totalPointCustomers as $accountNumber => $tp) {
             $net = $tp['penambahan'] - $tp['pengurangan'];
-            if ($net < 0) {
-                $net = 0;
-            }
-            $totalPointsAggregate += $net;
-
-            if ($tp['penambahan'] > 0) {
-                $totalPointDescriptionsAggregate .= "REK {$accountNumber} BERTAMBAH {$tp['penambahan']} KUPON<br>";
-            }
-            if ($tp['pengurangan'] > 0) {
-                $totalPointDescriptionsAggregate .= "REK {$accountNumber} BERKURANG {$tp['pengurangan']} KUPON<br>";
+            
+            // Simplified description logic: REK xxxxx {formatted_net} KUPON
+            $totalPointDescriptionsAggregate .= "REK {$accountNumber} " . number_format($net, 0, ',', '.') . " KUPON<br>";
+            
+            if ($net > 0) {
+                $totalPointsAggregate += $net;
             }
         }
 
         foreach ($customer->accounts as $account) {
+            if ($limitAccountNumbers && !in_array($account->account_number, $limitAccountNumbers)) {
+                continue;
+            }
             $existingDoc = $account->documents
                 ->where('document_type', AccountDocument::TYPE_ESTATEMENT)
                 ->first();
@@ -216,7 +206,7 @@ class GenerateBankStatementJob implements ShouldQueue
                 'year' => $this->year,
                 'month' => $this->month,
                 'current_date' => $this->currentDate,
-                'totalPoints' => $totalPointsAggregate,
+                'totalPoints' => number_format($totalPointsAggregate, 0, ',', '.'),
                 'totalPointDescriptions' => $totalPointDescriptionsAggregate
             ];
 
