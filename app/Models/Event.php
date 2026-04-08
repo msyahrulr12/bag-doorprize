@@ -25,32 +25,33 @@ class Event extends Model implements Auditable
     public const STATUS_DRAFT = 'DRAFT';
     public const STATUS_ACTIVE = 'ACTIVE';
     public const STATUS_COMPLETED = 'COMPLETED';
-
+    public const STATUS_INACTIVE = 'INACTIVE';
 
     public const EVENT_STATUS = [
         self::STATUS_DRAFT => 'DRAFT',
         self::STATUS_ACTIVE => 'ACTIVE',
-        self::STATUS_COMPLETED => 'COMPLETED'
+        self::STATUS_COMPLETED => 'COMPLETED',
+        self::STATUS_INACTIVE => 'INACTIVE'
     ];
 
     protected static function boot()
     {
         parent::boot();
 
-        static::saving(function ($event) {
-            if ($event->status === self::STATUS_ACTIVE) {
-                $activeEvent = self::where('status', self::STATUS_ACTIVE)
-                    ->where('id', '!=', $event->id)
-                    ->exists();
+        // static::saving(function ($event) {
+        //     if ($event->status === self::STATUS_ACTIVE) {
+        //         $activeEvent = self::where('status', self::STATUS_ACTIVE)
+        //             ->where('id', '!=', $event->id)
+        //             ->exists();
 
-                if ($activeEvent) {
-                    Notification::make()
-                        ->title('There is already an active event. Please complete the current active event before activating a new one.')
-                        ->warning()
-                        ->send();
-                }
-            }
-        });
+        //         if ($activeEvent) {
+        //             Notification::make()
+        //                 ->title('There is already an active event. Please complete the current active event before activating a new one.')
+        //                 ->warning()
+        //                 ->send();
+        //         }
+        //     }
+        // });
     }
 
     public function eventPrizes()
@@ -88,5 +89,15 @@ class Event extends Model implements Auditable
             'id',
             'id'
         );
+    }
+
+    public function activeParticipants()
+    {
+        return $this->hasMany(Participant::class, 'event_id')->where('status', Participant::STATUS_ACTIVE);
+    }
+
+    public function activeLotteryTickets()
+    {
+        return $this->hasMany(LotteryTicket::class, 'event_id')->where('status', LotteryTicket::STATUS_ACTIVE);
     }
 }
