@@ -25,7 +25,7 @@ The BAG Doorprize System automates the process of reward distribution. It integr
 
 **Key Features:**
 
-- **Weighted Drawings**: Bias drawings based on geographic regions (Sumatera, Jawa, etc.).
+- **Weighted Drawings**: Bias drawings based on geographic regions (JABODETABEK, JABAR JATENG JATIM, SUMATERA, BALI, NTT, MALUKU, SULAWESI, KALIMANTAN, LAINNYA).
 - **Maker-Checker System**: Critical actions (like point corrections or deletions) require dual-authorization.
 - **Bulk Drawing**: Process hundreds of winners simultaneously with background jobs.
 - **Auditability**: Every action is logged and trackable.
@@ -151,7 +151,7 @@ Staff with administrative access can fine-tune the system's behavior via the **S
     - `Min Opening Balance`: Minimum balance required to start earning points.
     - `Threshold Reduction Balance`: Controls how points are affected by balance drops.
 - **Drawing Weights**:
-    - `Region Weights`: A JSON configuration that defines the probability of picking a winner from a specific region (e.g., `{"Jawa": 50, "Sumatera": 20, ...}`).
+    - `Region Weights`: A JSON configuration that defines the probability of picking a winner from a specific region (e.g., `{"JABODETABEK": 50, "JABAR JATENG JATIM": 15, "SUMATERA": 15, "BALI, NTT, MALUKU": 7, "SULAWESI": 7, "KALIMANTAN": 6, "LAINNYA": 0}`).
 - **Drawing Experience**:
     - `Activate Re-draw & Confirm`: If enabled, winners must be manually confirmed or re-drawn. If disabled, winners are recorded immediately after the drawing animation.
     - `Draw Delay`: The duration (in seconds) of the drawing animation.

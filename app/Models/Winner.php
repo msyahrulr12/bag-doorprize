@@ -144,8 +144,10 @@ class Winner extends Model implements Auditable
             'branch_name' => $this->participant->account->branch->branch_name ?? 'N/A',
             'drawn_at' => $this->drawn_at ? \Carbon\Carbon::parse($this->drawn_at)->format('Y-m-d H:i:s') : null,
             'product_name' => $this->participant->account->product->nama_produk ?? 'N/A',
+            'product_code' => $this->participant->account->product->kode_produk ?? 'N/A',
             'branch_company_book' => $this->participant->account->branch->company_book ?? 'N/A',
             'account_status' => $this->participant->account->status ?? 'N/A',
+            'prize_name' => $this->prize_name ?? 'N/A',
         ];
     }
 

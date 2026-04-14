@@ -77,7 +77,7 @@ class SettingSeeder extends Seeder
             ['key' => 'activate_re_draw_and_confirm'],
             [
                 'group' => 'drawing',
-                'value' => false,
+                'value' => true,
                 'type' => 'boolean',
             ]
         );

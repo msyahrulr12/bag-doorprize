@@ -73,4 +73,9 @@ class Participant extends Model implements Auditable
     {
         return $this->hasMany(Winner::class);
     }
+
+    public function temporaryWinners()
+    {
+        return $this->hasMany(TemporaryWinner::class);
+    }
 }

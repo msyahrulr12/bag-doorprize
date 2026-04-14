@@ -152,7 +152,8 @@ class EventPrizeTable extends TableWidget
                 ViewAction::make()
                     ->label('Admin Draw')
                     ->icon('heroicon-o-presentation-chart-line')
-                    ->url(fn(EventPrize $record): string => in_array($record->prize->tier, [Prize::TIER_GRAND_PRIZE]) ? route('filament.admin.pages.draw-winner.{eventPrize}', ['eventPrize' => $record->id]) : route('filament.admin.pages.draw-winner-bulk.{eventPrize}', ['eventPrize' => $record->id])),
+                    ->url(fn(EventPrize $record): string => in_array($record->prize->tier, [Prize::TIER_GRAND_PRIZE]) ? route('filament.admin.pages.draw-winner.{eventPrize}', ['eventPrize' => $record->id]) : route('filament.admin.pages.draw-winner-bulk.{eventPrize}', ['eventPrize' => $record->id]))
+                    ->visible(false),
                 ViewAction::make('public_draw')
                     ->label('Public Draw')
                     ->icon('heroicon-o-eye')

@@ -33,6 +33,13 @@ class EventForm
                     ->options(Event::EVENT_STATUS),
                 DateTimePicker::make('event_started_at'),
                 DateTimePicker::make('event_ended_at'),
+                FileUpload::make('public_draw_background')
+                    ->label('Public Draw Background')
+                    ->columnSpanFull()
+                    ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/jpg'])
+                    ->maxSize(2048)
+                    ->disk('public')
+                    ->directory('uploads'),
                 Textarea::make('description')
                     ->columnSpanFull(),
             ]);

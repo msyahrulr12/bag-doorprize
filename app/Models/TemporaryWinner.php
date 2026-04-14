@@ -61,6 +61,8 @@ class TemporaryWinner extends Model implements Auditable
     public function getData()
     {
         return [
+            'id' => $this->id,
+            'participant_id' => $this->participant_id,
             'lucky_number' => $this->winning_number,
             'branch_name' => $this->branch_name,
             'cif' => $this->participant_cif,
@@ -72,6 +74,7 @@ class TemporaryWinner extends Model implements Auditable
                 ]
             ],
             'participant' => [
+                'id' => $this->participant_id,
                 'participant_name' => $this->participant_name,
                 'participant_cif' => $this->participant_cif,
                 'account' => [

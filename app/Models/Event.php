@@ -19,7 +19,8 @@ class Event extends Model implements Auditable
         'event_started_at',
         'event_ended_at',
         'description',
-        'last_ticket_number'
+        'last_ticket_number',
+        'public_draw_background'
     ];
 
     public const STATUS_DRAFT = 'DRAFT';
@@ -94,6 +95,11 @@ class Event extends Model implements Auditable
     public function activeParticipants()
     {
         return $this->hasMany(Participant::class, 'event_id')->where('status', Participant::STATUS_ACTIVE);
+    }
+
+    public function randomParticipants()
+    {
+        return $this->hasMany(Participant::class, 'event_id')->with(['account', 'account.branch', 'lotteryTickets'])->where('status', Participant::STATUS_ACTIVE)->limit(1000);
     }
 
     public function activeLotteryTickets()

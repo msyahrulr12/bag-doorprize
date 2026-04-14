@@ -35,10 +35,13 @@ class Branch extends Model implements Auditable
     ];
 
     public const REGIONS = [
-        'Jawa' => 'Jawa',
-        'Sumatera' => 'Sumatera',
-        'Sulawesi' => 'Sulawesi',
-        'Lainnya' => 'Lainnya',
+        'JABODETABEK' => 'JABODETABEK',
+        'JABAR JATENG JATIM' => 'JABAR JATENG JATIM',
+        'SUMATERA' => 'SUMATERA',
+        'BALI, NTT, MALUKU' => 'BALI, NTT, MALUKU',
+        'SULAWESI' => 'SULAWESI',
+        'KALIMANTAN' => 'KALIMANTAN',
+        'LAINNYA' => 'LAINNYA',
     ];
 
     public const STATUS_ACTIVE = 'ACTIVE';

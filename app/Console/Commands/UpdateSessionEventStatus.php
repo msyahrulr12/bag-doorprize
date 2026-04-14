@@ -49,7 +49,8 @@ class UpdateSessionEventStatus extends Command
 
         foreach ($sessionsToDeactivate as $session) {
             $session->update(['status' => DrawSession::STATUS_INACTIVE]);
-            $this->info("Draw Session [{$session->name}] (ID: {$session->id}) has been set to INACTIVE.");
+            \App\Jobs\ConfirmTemporaryWinnersJob::dispatch($session->id);
+            $this->info("Draw Session [{$session->name}] (ID: {$session->id}) has been set to INACTIVE and winners confirmed.");
         }
 
         $this->info("Finished updating statuses.");

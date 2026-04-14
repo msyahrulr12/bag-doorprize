@@ -42,6 +42,28 @@ class BulkDrawing extends Component
     public $isSingleDrawingMode = false;
     public bool $isReadyToReveal = false;
 
+    public int $totalDataToProcess = 0;
+
+    public $winner = null;
+    public $pendingWinners = [];
+    public $candidates = [];
+    public array $randomData = [
+        'names' => [],
+        'branches' => [],
+        'lucky_numbers' => [],
+    ];
+
+    #[Computed]
+    public function availableQuantity()
+    {
+        $this->eventPrize->refresh();
+        $stagedCount = TemporaryWinner::where('event_prize_id', $this->eventPrize->id)
+            ->where('draw_session_id', $this->drawSessionId)
+            ->count();
+        
+        return max(0, $this->eventPrize->remaining_quantity - $stagedCount);
+    }
+
     #[Computed]
     public function paginatedWinners()
     {
@@ -60,9 +82,31 @@ class BulkDrawing extends Component
             ->where('ended_at', '>=', now())
             ->first()?->id;
 
-        $this->alreadyConfirmed = (bool) Setting::where('key', 'activate_re_draw_and_confirm')->first()->value == false;
+        $this->enableRedraw = (bool) Setting::where('key', 'activate_re_draw_and_confirm')->first()->value ?? true;
 
+        $this->updateTotalDataToProcess();
         $this->checkWinner();
+    }
+
+    private function updateTotalDataToProcess()
+    {
+        $this->eventPrize->refresh();
+        $this->totalDataToProcess = $this->eventPrize?->remaining_quantity && $this->eventPrize?->remaining_quantity < $this->eventPrize?->split_draw ? $this->eventPrize?->remaining_quantity : $this->eventPrize?->split_draw;
+
+        $randomParticipants = $this->eventPrize->event->randomParticipants->map(function($p) {
+            return [
+                'id' => $p->id,
+                'participant_name' => $p->participant_name,
+                'participant_branch' => $p->account->branch->branch_name,
+                'participant_lucky_number' => $p?->lotteryTickets?->first()?->range_start ?? 'A' . rand(10000, 99999),
+            ];
+        });
+
+        $this->randomData = [
+            'names' => $randomParticipants->pluck('participant_name')->toArray(),
+            'branches' => $randomParticipants->pluck('participant_branch')->toArray(),
+            'lucky_numbers' => $randomParticipants->pluck('participant_lucky_number')->toArray(),
+        ];
     }
 
     public function updatedPage()
@@ -74,36 +118,65 @@ class BulkDrawing extends Component
 
     private function checkWinner()
     {
+        if ($this->isDrawing) {
+            return false;
+        }
         $this->isPreview = false;
         
-        // Always check if there are temporary winners first
-        $tempWinners = TemporaryWinner::where('draw_session_id', $this->drawSessionId)
-            ->where('event_prize_id', $this->eventPrize->id)
-            ->get();
+        if ($this->drawSessionId) {
+            // Always check if there are temporary winners first
+            $tempWinners = TemporaryWinner::where('draw_session_id', $this->drawSessionId)
+                ->where('event_prize_id', $this->eventPrize->id)
+                ->get();
 
-        if ($tempWinners->count() > 0) {
-            $this->newWinners = $tempWinners->map(fn($tw) => $tw->getData())->toArray();
-            $this->isPreview = true;
-            $this->totalWinners = count($this->newWinners);
-            
-            // For batch view, show new winners split into 3 columns
-            $this->winners = collect($this->newWinners)->split(3)->toArray();
-            return true;
+            if ($tempWinners->count() > 0) {
+                $this->pendingWinners = $tempWinners->map(fn($tw) => $tw->getData())->toArray();
+                $this->isPreview = true;
+                $this->totalWinners = count($this->pendingWinners);
+                
+                // For batch view, show new winners split into 3 columns
+                $this->winners = collect($this->pendingWinners)->split(3)->toArray();
+            }
         }
 
-        $paginatedWinners = $this->paginatedWinners;
+        $paginatedWinners = $this->paginatedWinners();
 
         if ($paginatedWinners->count() > 0) {
-            $this->totalWinners = $paginatedWinners->total();
-            $this->winners = collect($paginatedWinners->items())->map(fn(Winner $w) => $w->getDataBulk())->split(3)->toArray();
+            $firstWinner = $paginatedWinners->first();
+
+            if (!$this->isPreview) {
+                $firstWinner->load(['participant.account.branch', 'participant.account.customer']);
+                $this->winner = [
+                    'id' => $firstWinner->id,
+                    'ticket' => $firstWinner->lotteryTicket?->toArray() ?? [],
+                    'participant' => $firstWinner->participant?->toArray() ?? [],
+                    'customer' => $firstWinner->participant?->account?->customer?->toArray() ?? [],
+                    'lucky_number' => $firstWinner->winning_number,
+                    'winning_number' => $firstWinner->range_start === $firstWinner->range_end
+                        ? $firstWinner->range_start
+                        : "{$firstWinner->range_start} - {$firstWinner->range_end}",
+                    'draw_session_id' => $firstWinner->draw_session_id,
+                    'branch_name' => $firstWinner->branch_name,
+                    'region' => $firstWinner->branch_region,
+                    'drawn_at' => $firstWinner->created_at->format('Y-m-d H:i:s'),
+                ];
+            }
+
+            // For the table display (confirmed ones below)
+            if (!$this->isPreview) {
+                $this->winners = collect($paginatedWinners->items())->map(fn(Winner $w) => $w->getDataBulk())->split(3)->toArray();
+            }
+
             return true;
         }
 
-        $this->winners = [];
+        if (!$this->isPreview) {
+            $this->winners = [];
+        }
         return false;
     }
 
-    public function draw()
+    public function startDrawing()
     {
         $this->eventPrize->refresh();
         $remainingQuantity = $this->eventPrize->remaining_quantity;
@@ -120,24 +193,24 @@ class BulkDrawing extends Component
         
         // If there are already temporary winners and redraw is allowed, we should reset first or redraw
         // For simplicity, we auto-delete temporary winners for this prize session if starting a new draw
-        TemporaryWinner::where('draw_session_id', $this->drawSessionId)
-            ->where('event_prize_id', $this->eventPrize->id)
-            ->delete();
+        // TemporaryWinner::where('draw_session_id', $this->drawSessionId)
+        //     ->where('event_prize_id', $this->eventPrize->id)
+        //     ->delete();
 
-        $totalWinners = $this->eventPrize?->split_draw > 0 && $this->eventPrize?->split_draw <= $remainingQuantity ? $this->eventPrize->split_draw : $remainingQuantity;
+        $totalToDraw = $this->eventPrize->split_draw > 0 && $this->eventPrize->split_draw <= $remainingQuantity ? $this->eventPrize->split_draw : $remainingQuantity;
 
         // Create a batch record
         $batch = BulkDrawBatch::create([
             'event_prize_id' => $this->eventPrize->id,
             'draw_session_id' => $this->drawSessionId,
-            'total_winners' => $totalWinners,
+            'total_winners' => $totalToDraw,
             'status' => 'PENDING',
             'created_by' => Auth::user()->name ?? 'Public Guest',
         ]);
 
         $this->batchId = $batch->id;
         $this->batchStatus = 'PENDING';
-        $this->totalToProcess = $totalWinners;
+        $this->totalToProcess = $totalToDraw;
         $this->processedCount = 0;
         $this->processPercentage = 0;
         $this->isDrawing = true;
@@ -145,10 +218,16 @@ class BulkDrawing extends Component
         $this->stopTriggeredAt = null;
         $this->isReadyToReveal = false;
 
+        $this->winners = [];
+        $this->winner = null;
+        $this->pendingWinners = [];
+        $this->candidates = [];
+        $this->isPreview = false;
+
         // Dispatch background job
         \App\Jobs\ProcessBulkDrawJob::dispatch($batch->id);
 
-        $this->dispatch('info', message: 'Drawing Started! System is generating ' . $totalWinners . ' winners.');
+        $this->dispatch('trigger-animation');
     }
 
     public function checkBatchStatus()
@@ -160,47 +239,73 @@ class BulkDrawing extends Component
 
         $this->batchStatus = $batch->status;
         $this->processedCount = $batch->processed_winners;
-        $this->processPercentage = $this->totalToProcess > 0 ? ($this->processedCount * 100 / $this->totalToProcess) : 0;
+        $this->processPercentage = $batch->total_winners > 0 ? ($batch->processed_winners / $batch->total_winners) * 100 : 0;
 
         if (in_array($batch->status, ['COMPLETED', 'CANCELLED', 'FAILED'])) {
             $this->isReadyToReveal = true;
-            if ($this->isStopping) {
-                $this->finalizeResults($batch);
+            if ($batch->status === 'COMPLETED' && empty($this->candidates)) {
+                $candidateTickets = LotteryTicket::query()
+                    ->where('event_id', $this->eventPrize->event_id)
+                    ->where('total_points', '>=', $this->eventPrize->min_points_required)
+                    ->where('status', LotteryTicket::STATUS_ACTIVE)
+                    ->inRandomOrder()
+                    ->limit(20)
+                    ->get();
+                $this->candidates = $candidateTickets->map(fn($t) => $this->generateLuckyNumber($t))->toArray();
             }
         }
     }
 
     public function stopDrawing()
     {
-        if (!$this->batchId) {
-            $this->isDrawing = false;
-            return;
-        }
+        if (!$this->isDrawing) return;
 
-        $this->isStopping = true;
-        $this->stopTriggeredAt = time();
-
-        $batch = BulkDrawBatch::find($this->batchId);
-        if ($batch && in_array($batch->status, ['COMPLETED', 'CANCELLED', 'FAILED'])) {
-            $this->finalizeResults($batch);
-        } else {
+        if ($this->batchStatus === 'PROCESSING' || $this->batchStatus === 'PENDING') {
+            $batch = BulkDrawBatch::find($this->batchId);
             if ($batch) {
                 $batch->update(['status' => 'CANCELLED']);
             }
-            $this->dispatch('info', message: 'Finalizing current winners... Please wait.');
         }
+
+        $this->isStopping = true;
+        $this->finalizeResults();
     }
 
-    private function finalizeResults($batch)
+    private function finalizeResults()
     {
+        $batch = BulkDrawBatch::find($this->batchId);
+
         $this->batchId = null; 
         $this->isStopping = false;
         $this->isDrawing = false;
+        $this->isReadyToReveal = false;
         
         $this->checkWinner();
+    }
 
-        if ($this->alreadyConfirmed) {
-            $this->confirmWinner();
+    public function performDraw()
+    {
+        // This is now handled by the background job
+        return true;
+    }
+
+    public function finishDrawing()
+    {
+        $this->isDrawing = false;
+        $this->isPreview = true;
+        $this->updateTotalDataToProcess();
+        $this->checkWinner();
+
+        if (empty($this->pendingWinners)) {
+            $this->dispatch('error', message: 'Winner data not found. Animation stopped.');
+            return;
+        }
+
+        if (!$this->enableRedraw) {
+            $this->confirmWinners();
+            $this->dispatch('success', message: 'Winner confirmed and saved successfully!');
+        } else {
+            $this->dispatch('success', message: 'Winners have been picked and staged for review.');
         }
     }
 
@@ -235,14 +340,16 @@ class BulkDrawing extends Component
 
                 Winner::create($fullData);
                 $this->eventPrize->decrement('remaining_quantity');
-                $tw->delete();
+                // $tw->delete();
             }
             DB::commit();
 
             $this->dispatch('success', message: 'All winners have been confirmed!');
             $this->dispatch('winner-confirmed');
+            $this->winner = null;
             $this->isPreview = false;
-            $this->newWinners = [];
+            $this->pendingWinners = [];
+            $this->updateTotalDataToProcess();
             $this->checkWinner();
         } catch (\Exception $e) {
             DB::rollBack();
@@ -252,15 +359,46 @@ class BulkDrawing extends Component
 
     public function resetWinners()
     {
-        TemporaryWinner::where('draw_session_id', $this->drawSessionId)
-            ->where('event_prize_id', $this->eventPrize->id)
-            ->delete();
+        DB::beginTransaction();
+        try {
+            $this->isDrawing = false;
+            $this->isStopping = false;
+            $this->isReadyToReveal = false;
+            $this->batchId = null;
 
-        $this->isPreview = false;
-        $this->newWinners = [];
-        $this->checkWinner();
+            // Delete Temporary Winners
+            TemporaryWinner::where('draw_session_id', $this->drawSessionId)
+                ->where('event_prize_id', $this->eventPrize->id)
+                ->delete();
 
-        $this->dispatch('success', message: 'Winners have been reset. You can draw again.');
+            // Delete Confirmed Winners for this session and prize
+            if ($this->drawSessionId) {
+                $confirmedWinners = Winner::where('draw_session_id', $this->drawSessionId)
+                    ->where('event_prize_id', $this->eventPrize->id)
+                    ->get();
+
+                foreach ($confirmedWinners as $w) {
+                    $this->eventPrize->refresh();
+                    $this->eventPrize->increment('remaining_quantity');
+                    $w->delete();
+                }
+            }
+
+            DB::commit();
+
+            $this->winner = null;
+            $this->winners = [];
+            $this->pendingWinners = [];
+            $this->candidates = [];
+            $this->isPreview = false;
+            $this->updateTotalDataToProcess();
+            $this->checkWinner();
+
+            $this->dispatch('success', message: 'Winners have been reset. You can draw again.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            $this->dispatch('error', message: 'Reset failed: ' . $e->getMessage());
+        }
     }
 
     public function confirmWinner()
@@ -268,89 +406,124 @@ class BulkDrawing extends Component
         $this->confirmWinners();
     }
 
+    private function generateLuckyNumber($ticket): string
+    {
+        $start = $ticket->range_start;
+        $end = $ticket->range_end;
+
+        if ($start === $end)
+            return $start;
+
+        if (
+            preg_match('/^([A-Z]*)(\d+)$/', $start, $startMatch) &&
+            preg_match('/^([A-Z]*)(\d+)$/', $end, $endMatch)
+        ) {
+            $prefix = $startMatch[1];
+            $startNum = (int) $startMatch[2];
+            $endNum = (int) $endMatch[2];
+            $randomNum = mt_rand($startNum, $endNum);
+            return $prefix . str_pad($randomNum, strlen($startMatch[2]), '0', STR_PAD_LEFT);
+        }
+
+        return $start;
+    }
+
     public function clearWinner()
     {
-        $this->newWinners = [];
+        $this->pendingWinners = [];
         $this->winners = [];
         $this->isPreview = false;
     }
 
-    public function exportCsv()
+    public function exportCsv($extension = 'csv')
     {
-        return $this->downloadCsv();
-    }
-
-    public function exportExcel()
-    {
-        return $this->downloadCsv('xls');
-    }
-
-    protected function downloadCsv($extension = 'csv')
-    {
-        $exportData = collect($this->winners)->flatten(1);
-        if (empty($exportData) || count($exportData) == 0) {
-            $exportData = Winner::where('event_prize_id', $this->eventPrize->id)
+        $winnersToExport = [];
+        if (empty($winnersToExport) || count($winnersToExport) == 0) {
+            $winnersToExport = Winner::where('event_prize_id', $this->eventPrize->id)
                 ->where('draw_session_id', $this->drawSessionId)
                 ->get()
                 ->map(fn(Winner $w) => $w->getDataBulk());
         }
 
-        if (empty($exportData) || $exportData->isEmpty()) {
+        if (empty($winnersToExport))
             return null;
-        }
 
-        $filename = "winners_" . str_replace([' ', '/', '\\'], '_', $this->eventPrize->prize->prize_name) . "_" . now()->format('Ymd_His') . "." . $extension;
+        $filename = "grand_winners_" . str_replace([' ', '/', '\\'], '_', $this->eventPrize->prize->prize_name) . "_" . now()->format('Ymd_His') . "." . $extension;
 
         if ($extension === 'xls') {
-            return response()->streamDownload(function () use ($exportData) {
+            return response()->streamDownload(function () use ($winnersToExport) {
                 echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
                 <head><meta http-equiv="content-type" content="text/html; charset=utf-8"/></head>
                 <body><table border="1">
                     <thead>
                         <tr style="background-color: #f3f4f6;">
-                            <th>CIF</th><th>Account Number</th><th>Name</th><th>Region</th><th>Branch</th><th>Lucky Number</th><th>Points</th><th>Drawn At</th>
+                            <th>CIF</th>
+                            <th>Account Number</th>
+                            <th>Name</th>
+                            <th>Wilayah</th>
+                            <th>Branch</th>
+                            <th>Prize Name</th>
+                            <th>Lucky Number</th>
+                            <th>Points</th>
+                            <th>Product Name</th>
+                            <th>Product Code</th>
+                            <th>Account Status</th>
+                            <th>Drawn At</th>
                         </tr>
                     </thead>
                     <tbody>';
-                foreach ($exportData as $row) {
+                foreach ($winnersToExport as $w) {
                     echo '<tr>
-                        <td>' . ($row['cif'] ?? '') . '</td>
-                        <td>' . ($row['account']['account_number'] ?? $row['account_number'] ?? '') . '</td>
-                        <td>' . ($row['name'] ?? '') . '</td>
-                        <td>' . ($row['region'] ?? '') . '</td>
-                        <td>' . ($row['branch_name'] ?? '') . '</td>
-                        <td>' . ($row['lucky_number'] ?? $row['winning_number'] ?? '') . '</td>
-                        <td>' . ($row['ticket']['total_points'] ?? 0) . '</td>
-                        <td>' . (isset($row['drawn_at']) ? $row['drawn_at'] : now()->format('Y-m-d H:i:s')) . '</td>
+                        <td>' . ($w['cif'] ?? ($w['cif'] ?? 'N/A')) . '</td>
+                        <td>' . ($w['account']['account_number'] ?? $w['account_number']) . '</td>
+                        <td>' . ($w['participant']['name'] ?? ($w['name'] ?? 'N/A')) . '</td>
+                        <td>' . ($w['region'] ?? ($w['region'] ?? 'N/A')) . '</td>
+                        <td>' . ($w['branch_name'] ?? 'N/A') . '</td>
+                        <td>' . ($w['prize_name'] ?? 'N/A') . '</td>
+                        <td>' . $w['lucky_number'] . '</td>
+                        <td>' . ($w['ticket']['total_points'] ?? 0) . '</td>
+                        <td>' . ($w['product_name'] ?? 'N/A') . '</td>
+                        <td>' . ($w['product_code'] ?? 'N/A') . '</td>
+                        <td>' . ($w['account_status'] ?? 'N/A') . '</td>
+                        <td>' . now()->format('Y-m-d H:i:s') . '</td>
                     </tr>';
                 }
                 echo '</tbody></table></body></html>';
             }, $filename, ['Content-Type' => 'application/vnd.ms-excel']);
         }
 
-        return response()->streamDownload(function () use ($exportData) {
+        return response()->streamDownload(function () use ($winnersToExport) {
             $file = fopen('php://output', 'w');
             fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF));
-            fputcsv($file, ['CIF', 'Account Number', 'Name', 'Region', 'Branch', 'Lucky Number', 'Points', 'Drawn At']);
-            foreach ($exportData as $row) {
+            fputcsv($file, ['CIF', 'Account Number', 'Name', 'Wilayah', 'Branch', 'Prize Name', 'Lucky Number', 'Points', 'Product Name', 'Product Code', 'Account Status', 'Drawn At']);
+            foreach ($winnersToExport as $w) {
                 fputcsv($file, [
-                    $row['cif'] ?? '',
-                    $row['account']['account_number'] ?? $row['account_number'] ?? '',
-                    $row['name'] ?? '',
-                    $row['region'] ?? '',
-                    $row['branch_name'] ?? '',
-                    $row['lucky_number'] ?? $row['winning_number'] ?? '',
-                    $row['ticket']['total_points'] ?? 0,
-                    isset($row['drawn_at']) ? $row['drawn_at'] : now()->format('Y-m-d H:i:s'),
+                    $w['cif'] ?? ($w['cif'] ?? 'N/A'),
+                    $w['account']['account_number'] ?? $w['account_number'],
+                    $w['participant']['name'] ?? ($w['name'] ?? 'N/A'),
+                    $w['region'] ?? ($w['region'] ?? 'N/A'),
+                    $w['branch_name'] ?? $w['branch_name'],
+                    $w['prize_name'] ?? 'N/A',
+                    $w['lucky_number'],
+                    $w['ticket']['total_points'] ?? 0,
+                    $w['product_name'] ?? 'N/A',
+                    $w['product_code'] ?? 'N/A',
+                    $w['account_status'] ?? 'N/A',
+                    now()->format('Y-m-d H:i:s'),
                 ]);
             }
             fclose($file);
         }, $filename);
     }
 
+    public function exportExcel()
+    {
+        return $this->exportCsv('xls');
+    }
+
     public function render()
     {
-        return view('livewire.public.bulk-drawing')
+        return view('livewire.public.bulk-drawing-new')
             ->layout('layouts.guest');
     }
 }

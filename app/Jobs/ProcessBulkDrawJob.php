@@ -39,10 +39,13 @@ class ProcessBulkDrawJob implements ShouldQueue
             // 1. Fetch Region Weights
             $weightsSetting = Setting::where('key', 'region_weights')->first();
             $weights = $weightsSetting ? json_decode($weightsSetting->value, true) : [
-                'Jawa' => 50,
-                'Sumatera' => 20,
-                'Sulawesi' => 20,
-                'Lainnya' => 10,
+                'JABODETABEK' => 50,
+                'JABAR JATENG JATIM' => 15,
+                'SUMATERA' => 15,
+                'BALI, NTT, MALUKU' => 7,
+                'SULAWESI' => 7,
+                'KALIMANTAN' => 6,
+                'LAINNYA' => 0
             ];
 
             // 2. Fetch ALL eligible tickets ONCE to save memory/time
