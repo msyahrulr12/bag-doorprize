@@ -47,7 +47,7 @@ class EditEvent extends EditRecord
                         ->whereDoesntHave('participants')
                         ->update(['status' => Event::STATUS_INACTIVE]);
 
-                    if ($participantEventId) {
+                    if ($participantEventId && $participantEventId != $this->record->id) {
                         $previouslyActiveEvents = Event::where('id', $participantEventId)
                             ->first();
 
