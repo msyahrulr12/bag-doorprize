@@ -160,6 +160,36 @@ Staff with administrative access can fine-tune the system's behavior via the **S
 
 ---
 
+## 12. Database Backup & Restore
+
+To protect against data loss during critical operations (like point history processing), the system includes built-in backup and recovery tools.
+
+### Automatic Backups
+
+The system **automatically** performs a database backup whenever the `app:process-point-history-command` is executed. These backups are stored in `storage/app/backups/`.
+
+### Manual Commands
+
+Staff with terminal access can perform manual backups or restorations:
+
+- **Manual Backup**:
+    ```bash
+    make db-backup
+    # or
+    php artisan app:database-backup
+    ```
+
+- **Database Restore (Rollback)**:
+    ```bash
+    make db-restore
+    # or
+    php artisan app:database-restore
+    ```
+    - The restore command is interactive and will ask you to select a backup file from the list of available ones.
+    - **Warning**: Restoring a database will overwrite your current data with the data from the backup file. Use with caution!
+
+---
+
 ## Support & Maintenance
 
 For technical issues, please contact the IT System Administrator.

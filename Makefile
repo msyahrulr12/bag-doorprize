@@ -12,7 +12,7 @@ OCTANE_WORKERS?=4
 QUEUE_CONNECTION?=database
 QUEUE_NAMES?=tickets,imports,draws,reports,default
 
-.PHONY: help build package clean setup install deploy octane queue super-admin create-user-view supervisor
+.PHONY: help build package clean setup install deploy octane queue super-admin create-user-view supervisor db-backup db-restore
 
 help:
 	@echo "Offline Deployment Tool"
@@ -34,6 +34,8 @@ help:
 	@echo "  make create-user-view - Create PostgreSQL user for report_points_view"
 	@echo "  make optimize         - Optimize Laravel caches"
 	@echo "  make clear-cache   - Clear all Laravel caches"
+	@echo "  make db-backup     - Backup the application database"
+	@echo "  make db-restore    - Restore the application database from a backup"
 	@echo ""
 	@echo "Configuration (override with environment variables):"
 	@echo "  OCTANE_SERVER      - Octane server type (default: frankenphp)"
@@ -108,7 +110,9 @@ deploy:
 	mkdir -p storage/logs
 	@echo ">>> Setting permissions..."
 	chmod +x frankenphp
-	chmod -R 775 storage bootstrap/cache
+	sudo chown -R sysadmin:www-data storage bootstrap/cache
+	sudo chmod -R g+s storage bootstrap/cache
+	sudo chmod -R 775 storage bootstrap/cache
 	@echo ">>> Optimizing Laravel..."
 	php artisan key:generate --force --no-interaction
 	php artisan config:cache
@@ -178,6 +182,14 @@ cron:
 	@echo ">>> Setting up crontab for Laravel scheduler..."
 	@(crontab -l 2>/dev/null | grep -v "artisan schedule:run"; echo "* * * * * cd $(PWD) && php artisan schedule:run >> /dev/null 2>&1") | crontab -
 	@echo ">>> Crontab updated successfully. Scheduler will run every minute."
+
+db-backup:
+	@echo ">>> Backing up application database..."
+	php artisan app:database-backup
+
+db-restore:
+	@echo ">>> Restoring application database..."
+	php artisan app:database-restore
 
 clean:
 	rm -f $(PACKAGE_NAME)

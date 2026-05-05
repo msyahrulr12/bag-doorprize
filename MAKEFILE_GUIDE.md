@@ -18,6 +18,12 @@ make octane
 
 # Start queue worker
 make queue
+
+# Backup database
+make db-backup
+
+# Restore database
+make db-restore
 ```
 
 ## Configuration Variables
@@ -77,11 +83,13 @@ Deploys the application on the server:
 
 - Checks for `.env` file
 - Creates necessary directories
-- Sets permissions
+- Sets permissions (including `sudo chown` and `chmod g+s` for storage/cache)
 - Generates app key
 - Caches configuration
 - Runs migrations
 - Links storage
+
+**Note**: This command requires `sudo` privileges to set directory ownership and the setgid bit.
 
 **Requirements**: `.env` file must exist
 
@@ -166,6 +174,36 @@ Clears all Laravel caches:
 
 ```bash
 make clear-cache
+```
+
+### Database Management
+
+#### `make db-backup`
+
+Backs up the application database (PostgreSQL):
+
+- Uses `pg_dump` with `--clean` and `--if-exists`
+- Saves to `storage/app/backups/backup-YYYY-MM-DD-HHmmss.sql.gz`
+- Automatically ignores Core T24 databases
+
+```bash
+make db-backup
+```
+
+#### `make db-restore`
+
+Restores the application database from a backup file:
+
+- Provides an interactive list of available backups
+- Asks for confirmation before overwriting data
+- Uses `psql` for restoration
+
+```bash
+# Interactive restore
+make db-restore
+
+# Restore specific file
+php artisan app:database-restore backup-2026-04-28-120000.sql.gz
 ```
 
 ## Common Workflows

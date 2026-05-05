@@ -7,7 +7,9 @@ use App\Models\Branch;
 use App\Models\Event;
 use App\Models\Product;
 use App\Models\Setting;
-use DB;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Console\Command;
 
 class ProcessPointHistoryCommand extends Command
@@ -32,13 +34,13 @@ class ProcessPointHistoryCommand extends Command
     public function handle()
     {
         // Prevent concurrent execution using cache lock
-        $lock = \Cache::lock('process-point-history-import', 3600); // 1 hour lock
+        $lock = Cache::lock('process-point-history-import', 3600); // 1 hour lock
 
         if (!$lock->get()) {
             if ($this->option('force')) {
                 $this->warn('Another import is running. Forcing execution...');
-                \Cache::forget('process-point-history-import');
-                $lock = \Cache::lock('process-point-history-import', 3600);
+                Cache::forget('process-point-history-import');
+                $lock = Cache::lock('process-point-history-import', 3600);
                 $lock->get();
             } else {
                 $this->error('Another import process is already running!');
@@ -48,6 +50,16 @@ class ProcessPointHistoryCommand extends Command
         }
 
         try {
+            $this->info('Starting database backup before process...');
+            $result = $this->call('app:database-backup');
+            
+            if ($result !== 0) {
+                if (!$this->confirm('Database backup failed. Do you want to continue without backup?', false)) {
+                    $this->error('Process aborted due to backup failure.');
+                    return 1;
+                }
+            }
+
             $this->info('Starting import process...');
             $this->newLine();
 
@@ -136,7 +148,7 @@ class ProcessPointHistoryCommand extends Command
             return 0;
         } catch (\Exception $e) {
             $this->error('Import failed: ' . $e->getMessage());
-            \Log::error('Import failed: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            Log::error('Import failed: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return 1;
         } finally {
             $lock->release();

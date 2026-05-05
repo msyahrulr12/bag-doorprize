@@ -301,12 +301,7 @@ class BulkDrawing extends Component
             return;
         }
 
-        if (!$this->enableRedraw) {
-            $this->confirmWinners();
-            $this->dispatch('success', message: 'Winner confirmed and saved successfully!');
-        } else {
-            $this->dispatch('success', message: 'Winners have been picked and staged for review.');
-        }
+        $this->dispatch('success', message: 'Winners have been picked and staged for review.');
     }
 
     public function confirmWinners()

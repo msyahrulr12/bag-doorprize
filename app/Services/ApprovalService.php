@@ -37,8 +37,8 @@ class ApprovalService
         ]);
 
         // Automatically notify approvers
-        $approverRole = ApprovalConfig::getApproverRole($resource, $action);
-        $users = \Modules\UserManagement\Models\User::role($approverRole)->get();
+        $approverRoles = ApprovalConfig::getApproverRoles($resource, $action);
+        $users = \Modules\UserManagement\Models\User::role($approverRoles)->get();
 
         Notification::make()
             ->title("New {$action} request for {$resource}")
@@ -58,8 +58,8 @@ class ApprovalService
             return false; // Maker cannot be Checker
         }
 
-        $approverRole = ApprovalConfig::getApproverRole($approval->resource, $approval->action);
-        return Auth::user()->hasRole($approverRole);
+        $approverRoles = ApprovalConfig::getApproverRoles($approval->resource, $approval->action);
+        return Auth::user()->hasAnyRole($approverRoles);
     }
 
     /**

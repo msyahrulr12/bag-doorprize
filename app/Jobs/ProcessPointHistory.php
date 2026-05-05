@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 class ProcessPointHistory implements ShouldQueue
 {
@@ -83,14 +82,14 @@ class ProcessPointHistory implements ShouldQueue
 
             // Use CIF as key to prevent duplicates in the same batch
             $upserts[$customer['cif']] = [
-                'branch_id' => $branchId,
-                'name' => $customer['name'],
-                'cif' => $customer['cif'],
-                'email' => isset($customer['email']) ? $customer['email'] : null,
-                'status' => Customer::STATUS_ACTIVE,
+                'branch_id'     => $branchId,
+                'name'          => $customer['name'],
+                'cif'           => $customer['cif'],
+                'email'         => $customer['email'] ?? null,
+                'status'        => Customer::STATUS_ACTIVE,
                 'date_of_birth' => (isset($customer['date_of_birth']) && $customer['date_of_birth'] !== '') ? $customer['date_of_birth'] : null,
-                'created_at' => $now,
-                'updated_at' => $now,
+                'created_at'    => $now,
+                'updated_at'    => $now,
             ];
         }
 
@@ -108,18 +107,17 @@ class ProcessPointHistory implements ShouldQueue
         $upserts = [];
         foreach ($customers as $customer) {
             $customerId = $customerMap[$customer['cif']] ?? null;
-            $branchId = $this->branches[trim($customer['acc_open_branch'] ?? '')] ?? null;
-            $productId = $this->products[trim($customer['jenis_rekening'] ?? '')] ?? null;
-            $accNo = $customer['account_number'] ?? ($customer['ac_id'] ?? null);
+            $branchId   = $this->branches[trim($customer['acc_open_branch'] ?? '')] ?? null;
+            $productId  = $this->products[trim($customer['jenis_rekening'] ?? '')] ?? null;
+            $accNo      = $customer['account_number'] ?? ($customer['ac_id'] ?? null);
 
             if (!$customerId || !$branchId || !$productId || !$accNo)
                 continue;
 
             $inactivMarker = $customer['inactiv_marker'] ?? ($customer['inactivMarker'] ?? null);
-            $excludeFlag = $customer['exclude_flag'] ?? ($customer['excludeFlag'] ?? null);
-            $confiFlag = $customer['confi_flag'] ?? ($customer['confiFlag'] ?? null);
+            $excludeFlag   = $customer['exclude_flag']   ?? ($customer['excludeFlag']   ?? null);
+            $confiFlag     = $customer['confi_flag']     ?? ($customer['confiFlag']     ?? null);
 
-            $accountStatus = null;
             if ($confiFlag !== null && $confiFlag !== '' && $confiFlag !== 'N') {
                 $accountStatus = Account::STATUS_CONFI;
             } elseif ($inactivMarker !== null && $inactivMarker !== '' && $inactivMarker !== 'N') {
@@ -132,82 +130,82 @@ class ProcessPointHistory implements ShouldQueue
 
             // Use account_number as key to prevent duplicates in the same batch
             $upserts[$accNo] = [
-                'customer_id' => $customerId,
-                'branch_id' => $branchId,
-                'product_id' => $productId,
-                'account_number' => $accNo,
-                'account_type' => $customer['jenis_rekening'],
-                'account_opening_date' => $customer['account_opening_date'] ?? null,
+                'customer_id'            => $customerId,
+                'branch_id'              => $branchId,
+                'product_id'             => $productId,
+                'account_number'         => $accNo,
+                'account_type'           => $customer['jenis_rekening'],
+                'account_opening_date'    => $customer['account_opening_date'] ?? null,
                 'account_opening_balance' => $this->parseAmount($customer['account_opening_balance'] ?? 0),
-                'current_balance' => $this->parseAmount($customer['avgbal_tab'] ?? ($customer['avg_balance'] ?? 0)),
-                'created_at' => $now,
-                'updated_at' => $now,
-                'status' => $accountStatus,
+                'current_balance'         => $this->parseAmount($customer['avgbal_tab'] ?? ($customer['avg_balance'] ?? 0)),
+                'created_at'              => $now,
+                'updated_at'              => $now,
+                'status'                  => $accountStatus,
             ];
         }
 
         if (!empty($upserts)) {
-            Account::upsert(array_values($upserts), ['account_number'], ['customer_id', 'branch_id', 'product_id', 'account_opening_date', 'account_opening_balance', 'current_balance', 'updated_at', 'status']);
+            Account::upsert(
+                array_values($upserts),
+                ['account_number'],
+                ['customer_id', 'branch_id', 'product_id', 'account_opening_date', 'account_opening_balance', 'current_balance', 'updated_at', 'status']
+            );
         }
     }
 
     private function processPointHistoriesBulk(array $customers): array
     {
-        $prevMonth = $this->month - 1 ?: 12;
-        $prevYear = ($this->month === 1) ? $this->year - 1 : $this->year;
-        $existingMap = [];
+        // Resolve previous period (handles January → December of previous year)
+        $prevMonth = ($this->month === 1) ? 12 : $this->month - 1;
+        $prevYear  = ($this->month === 1) ? $this->year - 1 : $this->year;
 
-        $baseYear = (int) ($this->settings['base_comparison_year'] ?? 2026);
+        $baseYear  = (int) ($this->settings['base_comparison_year']  ?? 2026);
         $baseMonth = (int) ($this->settings['base_comparison_month'] ?? 1);
 
-        $accNos = array_filter(array_map(fn($c) => $c['account_number'] ?? ($c['ac_id'] ?? null), $customers));
+        $accNos     = array_filter(array_map(fn($c) => $c['account_number'] ?? ($c['ac_id'] ?? null), $customers));
         $accountMap = Account::whereIn('account_number', $accNos)->pluck('id', 'account_number')->toArray();
-        $now = now();
+        $now        = now();
 
+        // --- ETB anomaly detection map ---
+        $existingMap = [];
         if ($this->type === 'etb') {
-            // Check existing records in range [base, prev] across ANY type to feed anomaly detection. 
             $existing = PointHistory::whereIn('account_id', array_values($accountMap))
                 ->where('year', '>=', $baseYear)
                 ->where('year', '<=', $prevYear)
                 ->get(['account_id', 'month', 'year']);
 
-            $existingMap = [];
             foreach ($existing as $rec) {
                 $existingMap[$rec->account_id][$rec->year][$rec->month] = true;
             }
         }
 
-        // Fetch prev-month amounts from EARN records only.
-        // Using EXPIRED amounts for growth comparison would produce wrong (usually negative) growth.
+        // --- Previous month amounts (EARN only, ignores gap-fill phantoms) ---
         $prevAmounts = PointHistory::whereIn('account_id', array_values($accountMap))
             ->where('month', $prevMonth)
             ->where('year', $prevYear)
-            ->where('description', '!=', 'BASE COMPARISON DATA (GAP FILL)') // Ignore phantom zero-balance records
-            ->orderBy('amount', 'desc') 
+            ->where('description', '!=', 'BASE COMPARISON DATA (GAP FILL)')
+            ->orderBy('amount', 'desc')
             ->get(['amount', 'account_id'])
             ->pluck('amount', 'account_id')
             ->toArray();
 
+        // --- Participant & active-ticket data (needed for reset logic) ---
         $participants = Participant::whereIn('account_id', array_values($accountMap))
-            ->where('event_id', $this->eventId)->get(['id', 'account_id'])->keyBy('account_id');
+            ->where('event_id', $this->eventId)
+            ->get(['id', 'account_id'])
+            ->keyBy('account_id');
 
         $activeTicketPoints = [];
         if ($participants->isNotEmpty()) {
             $activeTicketPoints = LotteryTicket::whereIn('participant_id', $participants->pluck('id'))
                 ->where('status', LotteryTicket::STATUS_ACTIVE)
-                ->selectRaw('participant_id, SUM(total_points) as total')->groupBy('participant_id')->pluck('total', 'participant_id')->toArray();
+                ->selectRaw('participant_id, SUM(total_points) as total')
+                ->groupBy('participant_id')
+                ->pluck('total', 'participant_id')
+                ->toArray();
         }
 
-        $batchPh = [];
-        $anomalyRecords = [];
-        $accountsToReset = [];
-        $now = now();
-        
-        $divider = $this->parseAmount($this->settings['point_divider'] ?? 100000);
-        $threshold = $this->parseAmount($this->settings['threshold_reduction_balance'] ?? 100000);
-
-        // Fetch current cumulative points from ledger to ensure a full reset on expiration
-        // Exclude current month/year to make it re-run safe for the same batch
+        // --- Cumulative ledger points (before this period, re-run safe) ---
         $currentLedgerPoints = PointHistory::whereIn('account_id', array_values($accountMap))
             ->where(function ($q) {
                 $q->where('year', '<', $this->year)
@@ -221,137 +219,175 @@ class ProcessPointHistory implements ShouldQueue
             ->pluck('total', 'account_id')
             ->toArray();
 
+        $divider = $this->parseAmount($this->settings['point_divider'] ?? 100000);
+        if ($divider <= 0) {
+            $divider = 100000;
+        }
+
+        $batchPh        = [];
+        $anomalyRecords = [];
+        $accountsToReset = [];
+
         foreach ($customers as $customer) {
             $accNo = $customer['account_number'] ?? ($customer['ac_id'] ?? null);
             $accId = $accountMap[$accNo] ?? null;
             if (!$accId)
                 continue;
 
-            $currAmt = $this->parseAmount($customer['avgbal_tab'] ?? ($customer['avg_balance'] ?? 0));
-            $prevAmt = (float) ($prevAmounts[$accId] ?? 0);
-            $hasPrev = isset($prevAmounts[$accId]);
-
-            // account_opening_date is used to detect new ETB accounts belonging to new customers
-            // who also registered other accounts. If present, points are calculated normally.
+            $currAmt     = $this->parseAmount($customer['avgbal_tab'] ?? ($customer['avg_balance'] ?? 0));
+            $prevAmt     = (float) ($prevAmounts[$accId] ?? 0);
+            $hasPrev     = isset($prevAmounts[$accId]);
             $openingDate = $customer['account_opening_date'] ?? null;
 
-            // Anomaly Detection: ETB with empty opening date and no month before data
+            $inactivMarker = $customer['inactiv_marker'] ?? ($customer['inactivMarker'] ?? null);
+            $excludeFlag   = $customer['exclude_flag']   ?? ($customer['excludeFlag']   ?? null);
+            $confiFlag     = $customer['confi_flag']     ?? ($customer['confiFlag']     ?? null);
+
+            $isRestricted = ($inactivMarker !== null && $inactivMarker !== '' && $inactivMarker !== 'N')
+                || ($excludeFlag !== null && $excludeFlag !== '' && $excludeFlag !== 'N')
+                || ($confiFlag   !== null && $confiFlag   !== '' && $confiFlag   !== 'N');
+
+            // --- Anomaly Detection: ETB with empty opening date and no prior month data ---
             if ($this->type === 'etb') {
                 $hasMonthBefore = isset($existingMap[$accId][$prevYear][$prevMonth]);
-
                 if (empty($openingDate) && !$hasMonthBefore) {
                     $anomalyRecords[] = [
-                        'cif' => $customer['cif'] ?? null,
+                        'cif'            => $customer['cif'] ?? null,
                         'account_number' => $accNo,
-                        'name' => $customer['name'] ?? null,
-                        'email' => $customer['email'] ?? null,
-                        'description' => "Anomaly: Empty account_opening_date and no previous month data for ETB.",
-                        'avg_balance' => $currAmt,
-                        'year' => $this->year,
-                        'month' => $this->month,
-                        'created_at' => $now,
-                        'updated_at' => $now,
+                        'name'           => $customer['name'] ?? null,
+                        'email'          => $customer['email'] ?? null,
+                        'description'    => "Anomaly: Empty account_opening_date and no previous month data for ETB.",
+                        'avg_balance'    => $currAmt,
+                        'year'           => $this->year,
+                        'month'          => $this->month,
+                        'created_at'     => $now,
+                        'updated_at'     => $now,
                     ];
                 }
             }
 
-            $growth = $currAmt - $prevAmt;
+            // --- Point Calculation ---
+            $phType   = PointHistory::POINT_TYPE_EARN;
+            $typeText = 'BERTAMBAH';
+            $points   = 0;
+            $status   = $customer['status'] ?? null;
 
-            $status = $customer['status'] ?? null;
-            $inactivMarker = $customer['inactiv_marker'] ?? ($customer['inactivMarker'] ?? null);
-            $excludeFlag = $customer['exclude_flag'] ?? ($customer['excludeFlag'] ?? null);
-            $confiFlag = $customer['confi_flag'] ?? ($customer['confiFlag'] ?? null);
-
-            $type = PointHistory::POINT_TYPE_EARN;
-            $typeText = "BERTAMBAH";
-            $points = 0;
-
-            // Base period: no comparison possible, points are always 0
             if ($this->month === $baseMonth && $this->year === $baseYear) {
-                $points = 0;
-            } elseif (($inactivMarker !== null && $inactivMarker !== '' && $inactivMarker !== 'N') || ($excludeFlag !== null && $excludeFlag !== '' && $excludeFlag !== 'N') || ($confiFlag !== null && $confiFlag !== '' && $confiFlag !== 'N')) {
-                $pid = $participants[$accId]->id ?? null;
-                $activePoints = $pid ? ($activeTicketPoints[$pid] ?? 0) : 0;
+                // Base period: no previous data to compare — always 0, record as EARN for audit trail
+                $phType   = PointHistory::POINT_TYPE_EARN;
+                $typeText = 'BERTAMBAH';
+                $points   = 0;
 
-                if ($activePoints > 0) {
-                    $points = -$activePoints;
+            } elseif ($isRestricted) {
+                // Account is inactive / excluded / confi — revoke all active tickets
+                $participant = $participants[$accId] ?? null;
+                $pid         = $participant?->id;
+                $activePoints = $pid ? (int) ($activeTicketPoints[$pid] ?? 0) : 0;
+
+                $points = $activePoints > 0 ? -$activePoints : 0;
+
+                if ($pid && $activePoints > 0) {
+                    $accountsToReset[] = $pid;
+                }
+
+                $phType   = PointHistory::POINT_TYPE_RESET;
+                $typeText = 'RESET';
+                $status   = 'RESET';
+
+            } elseif ($this->type === 'etb' && !$hasPrev && empty($openingDate)) {
+                // ETB with no previous data AND no opening date: truly unknown — skip tickets,
+                // but still write a zero-point EARN record for audit trail.
+                $phType   = PointHistory::POINT_TYPE_EARN;
+                $typeText = 'BERTAMBAH';
+                $points   = 0;
+
+            } else {
+                $growth = $currAmt - $prevAmt;
+
+                if ($growth < 0) {
+                    // Negative growth → expire/reset all accumulated points
+                    $participant = $participants[$accId] ?? null;
+                    $pid         = $participant?->id;
+                    $ledgerSum   = (int) ($currentLedgerPoints[$accId] ?? 0);
+                    $points      = $ledgerSum > 0 ? -$ledgerSum : 0;
+
+                    $phType   = PointHistory::POINT_TYPE_EXPIRED;
+                    $typeText = 'BERKURANG';
+
                     if ($pid) {
                         $accountsToReset[] = $pid;
                     }
-                } else {
-                    $points = 0;
-                }
 
-                $type = PointHistory::POINT_TYPE_RESET;
-                $status = 'RESET';
-                $typeText = "RESET";
-            } elseif ($this->type === 'etb' && !$hasPrev && empty($openingDate)) {
-                // ETB with no previous data AND no opening date: truly unknown account, skip points.
-                // If opening date IS present, this is a new account for an existing/new customer
-                // who also registered accounts in NTB — fall through to normal calculation.
-                $points = 0;
-            } else {
-                // If growth is negative, we reset all points. 
-                // Removed threshold check to allow any decrease to trigger a reset as requested by client.
-                if ($growth < 0) {
-                    $pid = $participants[$accId]->id ?? null;
-                    // Reset ALL points in ledger for this account
-                    $ledgerSum = (int) ($currentLedgerPoints[$accId] ?? 0);
-                    $points = $ledgerSum > 0 ? -$ledgerSum : 0;
-                    
-                    $type = PointHistory::POINT_TYPE_EXPIRED;
-                    $typeText = "BERKURANG";
-                    if ($pid)
-                        $accountsToReset[] = $pid;
                 } elseif ($growth > 0) {
+                    // Positive growth → award points
                     $openingPoint = 0;
                     if ($this->type === 'ntb') {
-                        $openingPoint = $this->parseAmount($customer['account_opening_balance'] ?? 0) >= ($this->settings['min_opening_balance'] ?? 500000) ? (int) ($this->settings['base_point_ntb'] ?? 10) : 0;
+                        $openingBalance = $this->parseAmount($customer['account_opening_balance'] ?? 0);
+                        $minOpening     = (float) ($this->settings['min_opening_balance'] ?? 500000);
+                        $basePoint      = (int) ($this->settings['base_point_ntb'] ?? 10);
+                        $openingPoint   = $openingBalance >= $minOpening ? $basePoint : 0;
                     }
 
                     $points = (int) floor($growth / $divider) + $openingPoint;
                 }
+                // growth === 0: keep $points = 0, type = EARN (no change recorded)
             }
 
-            // Check if the processed
-
-            // Create a unique key for the batch based on the upsert columns
-            // For SYSTEM imports, the key is stable to enable upsert idempotency.
-            // We removed {type} from the key to ensure only one system record exists per account/month/year,
-            // even if the type changes during a re-run.
-            $batchKey = "{$accId}-{$this->month}-{$this->year}";
+            // Build stable unique key (one SYSTEM record per account/month/year regardless of type changes on re-run)
+            $batchKey  = "{$accId}-{$this->month}-{$this->year}";
             $uniqueKey = "ph_sys_{$accId}_{$this->month}_{$this->year}";
+
             $batchPh[$batchKey] = [
-                'account_id' => $accId,
-                'amount' => $currAmt,
-                'month' => $this->month,
-                'year' => $this->year,
-                'points' => (int) $points,
-                'type' => $type,
+                'account_id'  => $accId,
+                'amount'      => $currAmt,
+                'month'       => $this->month,
+                'year'        => $this->year,
+                'points'      => (int) $points,
+                'type'        => $phType,
                 'description' => "REK {$accNo} {$typeText} " . abs((int) $points) . " KUPON",
-                'source' => 'SYSTEM',
-                'unique_key' => $uniqueKey,
-                'created_at' => $now,
-                'updated_at' => $now,
-                'status' => $status,
+                'source'      => 'SYSTEM',
+                'unique_key'  => $uniqueKey,
+                'created_at'  => $now,
+                'updated_at'  => $now,
+                'status'      => $status,
             ];
         }
 
+        // --- Persist Point Histories (upsert, also updates `type` on re-run) ---
         if (!empty($batchPh)) {
-            PointHistory::upsert(array_values($batchPh), ['unique_key'], ['amount', 'points', 'description', 'updated_at', 'status']);
+            PointHistory::upsert(
+                array_values($batchPh),
+                ['unique_key'],
+                ['amount', 'points', 'type', 'description', 'updated_at', 'status']
+            );
         }
 
+        // --- Persist Anomalies (idempotent: updateOrInsert to prevent duplicates) ---
         if (!empty($anomalyRecords)) {
-            DB::table('point_history_anomalies')->insert($anomalyRecords);
+            foreach ($anomalyRecords as $anomaly) {
+                // Remove created_at from the update payload so it doesn't overwrite the original creation time
+                $updateData = $anomaly;
+                unset($updateData['created_at']);
+                
+                DB::table('point_history_anomalies')->updateOrInsert(
+                    [
+                        'account_number' => $anomaly['account_number'],
+                        'month'          => $anomaly['month'],
+                        'year'           => $anomaly['year'],
+                    ],
+                    $updateData
+                );
+            }
         }
 
+        // --- Reset lottery tickets for restricted/negative-growth accounts ---
         if (!empty($accountsToReset)) {
             LotteryTicket::where('event_id', $this->eventId)
                 ->whereIn('participant_id', $accountsToReset)
                 ->where('status', LotteryTicket::STATUS_ACTIVE)
                 ->update([
-                    'status' => LotteryTicket::STATUS_RESET,
-                    'updated_at' => $now
+                    'status'     => LotteryTicket::STATUS_RESET,
+                    'updated_at' => $now,
                 ]);
         }
 
@@ -360,9 +396,9 @@ class ProcessPointHistory implements ShouldQueue
 
     private function processParticipantsBulk(array $customers): array
     {
-        $accNos = array_filter(array_map(fn($c) => $c['account_number'] ?? ($c['ac_id'] ?? null), $customers));
+        $accNos     = array_filter(array_map(fn($c) => $c['account_number'] ?? ($c['ac_id'] ?? null), $customers));
         $accountMap = Account::whereIn('account_number', $accNos)->pluck('id', 'account_number')->toArray();
-        $now = now();
+        $now        = now();
 
         $upserts = [];
         foreach ($customers as $customer) {
@@ -373,21 +409,25 @@ class ProcessPointHistory implements ShouldQueue
 
             // Use account_id as key to prevent duplicates in the same batch
             $upserts[$accId] = [
-                'event_id' => $this->eventId,
-                'account_id' => $accId,
-                'participant_name' => $customer['name'],
-                'participant_cif' => $customer['cif'],
+                'event_id'                   => $this->eventId,
+                'account_id'                 => $accId,
+                'participant_name'           => $customer['name'],
+                'participant_cif'            => $customer['cif'],
                 'participant_account_number' => $accNo,
-                'participant_email' => isset($customer['email']) ? $customer['email'] : null,
-                'participant_phone_number' => isset($customer['phone_number']) ? $customer['phone_number'] : null,
-                'status' => Participant::STATUS_ACTIVE,
-                'created_at' => $now,
-                'updated_at' => $now,
+                'participant_email'          => $customer['email'] ?? null,
+                'participant_phone_number'   => $customer['phone_number'] ?? null,
+                'status'                     => Participant::STATUS_ACTIVE,
+                'created_at'                 => $now,
+                'updated_at'                 => $now,
             ];
         }
 
         if (!empty($upserts)) {
-            Participant::upsert(array_values($upserts), ['event_id', 'account_id'], ['participant_name', 'participant_cif', 'participant_account_number', 'participant_email', 'participant_phone_number', 'updated_at']);
+            Participant::upsert(
+                array_values($upserts),
+                ['event_id', 'account_id'],
+                ['participant_name', 'participant_cif', 'participant_account_number', 'participant_email', 'participant_phone_number', 'updated_at']
+            );
         }
 
         // Return refreshed map of account_id => participant_id
@@ -408,12 +448,12 @@ class ProcessPointHistory implements ShouldQueue
         }
 
         // Handle Indonesian format: 1.234.567,89
-        // 1. Remove all dots (thousands)
-        // 2. Replace comma with dot (decimal)
-        $clean = str_replace('.', '', $value);
+        // 1. Remove all dots (thousands separator)
+        // 2. Replace comma with dot (decimal separator)
+        $clean = str_replace('.', '', (string) $value);
         $clean = str_replace(',', '.', $clean);
 
-        // If it still contains non-numeric chars (except dot/minus), try to strip them
+        // Strip any remaining non-numeric chars except dot/minus
         $clean = preg_replace('/[^0-9.-]/', '', $clean);
 
         return (float) $clean;

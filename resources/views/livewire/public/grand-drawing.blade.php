@@ -135,7 +135,7 @@
                     wire:click="startDrawing"
                     wire:loading.attr="disabled"
                     class="group relative px-16 py-6 bg-[#2d7a8e] hover:bg-[#256678] text-white font-black text-2xl rounded-2xl shadow-[0_10px_40px_rgba(45,122,142,0.3)] transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
-                    disabled="{{ $isDrawing }}">
+                    @disabled($isDrawing)>
                     <span wire:loading.remove class="flex items-center gap-3">
                         <x-heroicon-s-bolt class="w-8 h-8" />
                         START DRAWING

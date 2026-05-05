@@ -17,6 +17,7 @@ use Filament\Actions\EditAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
+use Illuminate\Validation\Rules\Unique;
 use UnitEnum;
 use BackedEnum;
 
@@ -33,7 +34,12 @@ class ApprovalConfigResource extends Resource
         return $schema
             ->components([
                 Select::make('resource')
-                    ->options(fn(): array => collect(array_merge(glob(app_path('Filament/Resources/*')), glob(app_path('Filament/Pages/*'))))
+                    ->options(fn(): array => collect(array_merge(
+                        glob(app_path('Filament/Resources/*')), 
+                        glob(app_path('Filament/Pages/*')),
+                        glob(base_path('Modules/*/app/Filament/Resources/*')),
+                        glob(base_path('Modules/*/app/Filament/Pages/*'))
+                    ))
                         ->map(function($path) {
                             if (is_dir($path)) {
                                 $resourceFile = collect(glob($path . '/*Resource.php'))->first();
@@ -64,7 +70,11 @@ class ApprovalConfigResource extends Resource
                 Select::make('approver_role')
                     ->options(Role::pluck('name', 'name'))
                     ->required()
-                    ->default('super_admin'),
+                    ->default('super_admin')
+                    ->unique(ignoreRecord: true, modifyRuleUsing: function (Unique $rule, \Filament\Schemas\Components\Utilities\Get $get) {
+                        return $rule->where('resource', $get('resource'))
+                                    ->where('action', $get('action'));
+                    }),
                 Toggle::make('is_enabled')
                     ->default(true),
             ]);

@@ -29,16 +29,20 @@ class ApprovalConfig extends Model implements Auditable
         return $config !== null;
     }
 
-    public static function getApproverRole(string $resource, string $action): string
+    public static function getApproverRoles(string $resource, string $action): array
     {
-        $config = self::where('resource', $resource)
+        $configs = self::where('resource', $resource)
             ->where(function ($query) use ($action) {
                 $query->where('action', $action)
                     ->orWhere('action', 'all');
             })
             ->where('is_enabled', true)
-            ->first();
+            ->get();
 
-        return $config->approver_role ?? 'super_admin';
+        if ($configs->isEmpty()) {
+            return ['super_admin'];
+        }
+
+        return $configs->pluck('approver_role')->unique()->toArray();
     }
 }

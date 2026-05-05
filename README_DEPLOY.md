@@ -129,6 +129,8 @@ Move the generated `bag-doorprize-deploy.tar.gz` to your target server using a U
     ```bash
     make deploy
     ```
+    *Note: This command will set directory ownership to `sysadmin:www-data` and apply the setgid bit to ensure consistent permissions for both web and CLI processes.*
+
 5.  Setup the automated task scheduler (Crontab):
     ```bash
     make cron
