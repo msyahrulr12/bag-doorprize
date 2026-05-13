@@ -24,4 +24,4 @@ Schedule::command('app:export-winners')->dailyAt('01:00');
 Schedule::command('app:generate-bank-statement-pdf-command')->cron(env('SCHEDULER_GENERATE_BANK_STATEMENT', '0 10 4 * *'));
 
 // Status Maintenance
-Schedule::command('app:update-session-event-status')->everyTwoHours();
+Schedule::command('app:update-session-event-status')->hourly();
