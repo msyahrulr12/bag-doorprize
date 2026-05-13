@@ -111,6 +111,22 @@
             <h1 class="text-4xl md:text-4xl font-black tracking-tighter text-slate-900 mb-2 drop-shadow-sm">
                 {{ $eventPrize->prize->prize_name }}
             </h1>
+            <div class="flex flex-wrap items-center justify-center gap-3 mt-4">
+                <div class="flex items-center gap-2 px-4 py-1.5 bg-white rounded-full text-[10px] font-black uppercase tracking-widest border border-slate-200 shadow-sm">
+                    <span class="text-slate-400">Remaining</span>
+                    <span class="text-[#2d7a8e]">{{ $this->availableQuantity }}</span>
+                </div>
+                <div class="flex items-center gap-2 px-4 py-1.5 bg-white rounded-full text-[10px] font-black uppercase tracking-widest border border-slate-200 shadow-sm">
+                    <span class="text-slate-400">Drawing</span>
+                    <span class="text-[#2d7a8e]">{{ $totalDataToProcess }}</span>
+                </div>
+                @if($this->drawSessionId)
+                    <div class="flex items-center gap-2 px-4 py-1.5 bg-white rounded-full text-[10px] font-black uppercase tracking-widest border border-slate-200 shadow-sm">
+                        <span class="text-slate-400">Session</span>
+                        <span class="text-[#2d7a8e]">{{ \App\Models\DrawSession::find($this->drawSessionId)?->name ?? 'Unknown' }}</span>
+                    </div>
+                @endif
+            </div>
         </div>
     </div>
 
@@ -210,7 +226,7 @@
                 style="background-image: radial-gradient(#2d7a8e 1px, transparent 1px); background-size: 20px 20px;"></div>
 
             <!-- Scrolling Lucky Number -->
-            <div class="mb-10 relative">
+            <!-- <div class="mb-10 relative">
                 <div class="absolute inset-0 bg-[#2d7a8e]/20 rounded-full blur-3xl animate-pulse"></div>
                 <div class="relative z-10 flex gap-2 md:gap-3 justify-center scale-75 md:scale-100">
                     <template x-for="(digit, index) in (placeholders[0]?.lucky_number || '000000000').split('')" :key="index">
@@ -219,7 +235,7 @@
                         </div>
                     </template>
                 </div>
-            </div>
+            </div> -->
 
             <!-- Title -->
             <div class="relative z-10 text-center uppercase tracking-tighter mb-8">
@@ -396,7 +412,7 @@
     <!-- Footer / Remaining -->
     <div class="relative z-10 mt-12 flex flex-wrap justify-center gap-8 text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
         <div class="flex items-center gap-2 px-6 py-2 bg-white/50 backdrop-blur rounded-full border border-slate-100 shadow-sm">
-            <span class="text-[#2d7a8e]">{{ $eventPrize->remaining_quantity }}</span>
+            <span class="text-[#2d7a8e]">{{ $this->availableQuantity }}</span>
             <span>Items Remaining</span>
         </div>
         <div class="flex items-center gap-2 px-6 py-2 bg-white/50 backdrop-blur rounded-full border border-slate-100 shadow-sm">
