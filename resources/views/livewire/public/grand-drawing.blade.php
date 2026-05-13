@@ -197,17 +197,35 @@
                         <div class="flex flex-wrap items-center gap-2">
                             @if($eventPrize && $this->availableQuantity > 0)
                                 <button wire:click="startDrawing"
-                                    class="flex-1 md:flex-none px-10 py-4 bg-[#2d7a8e] text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-[#256678] transition-all shadow-lg hover:-translate-y-0.5 flex items-center justify-center gap-2">
-                                    <x-heroicon-s-bolt class="w-5 h-5" />
-                                    DRAW AGAIN
+                                    wire:loading.attr="disabled"
+                                    class="group flex-1 md:flex-none px-10 py-4 bg-[#2d7a8e] text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-[#256678] transition-all shadow-lg hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:pointer-events-none disabled:scale-100 disabled:translate-y-0 flex items-center justify-center gap-2">
+                                    <span wire:loading.remove wire:target="startDrawing" class="flex items-center gap-2">
+                                        <x-heroicon-s-bolt class="w-5 h-5" />
+                                        DRAW AGAIN
+                                    </span>
+                                    <span wire:loading wire:target="startDrawing" class="flex items-center gap-2">
+                                        <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        PREPARING...
+                                    </span>
                                 </button>
                             @endif
 
                             @if($drawSessionId && (!empty($winners) || $this->paginatedWinners->total() > 0))
                                 <button wire:click="resetWinners"
-                                    onclick="return confirm('Are you sure you want to reset and redraw current results? Information will be restored to remaining quantity.')"
-                                    class="flex-1 md:flex-none px-10 py-4 bg-red-50 text-red-600 rounded-xl font-black text-sm uppercase tracking-wider hover:bg-red-100 transition-all text-center border border-red-100 whitespace-nowrap">
-                                    RESET & REDRAW
+                                    wire:confirm="Are you sure you want to reset and redraw current results? Information will be restored to remaining quantity."
+                                    wire:loading.attr="disabled"
+                                    class="group flex-1 md:flex-none px-10 py-4 bg-red-50 text-red-600 rounded-xl font-black text-sm uppercase tracking-wider hover:bg-red-100 transition-all text-center border border-red-100 whitespace-nowrap active:scale-95 disabled:opacity-50 disabled:pointer-events-none disabled:scale-100">
+                                    <span wire:loading.remove wire:target="resetWinners">RESET & REDRAW</span>
+                                    <span wire:loading wire:target="resetWinners" class="flex items-center justify-center gap-2">
+                                        <svg class="animate-spin h-5 w-5 text-red-600" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        RESETTING...
+                                    </span>
                                 </button>
                             @endif
                         </div>
@@ -303,16 +321,29 @@
                 </div>
             </div>
 
-            <!-- Stop Button -->
-            <div class="relative z-10 mt-4">
-                <button x-on:click="stop()"
-                    class="group relative px-16 py-5 bg-red-600 text-white rounded-2xl text-xl font-black uppercase tracking-widest shadow-[0_10px_40px_rgba(220,38,38,0.4)] hover:bg-red-700 transition-all hover:scale-105 active:scale-95 flex items-center gap-4">
-                    <x-heroicon-s-bolt class="w-7 h-7 group-hover:animate-bounce" />
-                    STOP DRAWING
-                </button>
-                <p class="text-center text-[10px] text-slate-400 uppercase tracking-widest font-black mt-3 animate-pulse">
-                    Click to stop and reveal winners
-                </p>
+            <!-- Stop Button / Loading State -->
+            <div class="relative z-10 mt-4 flex flex-col items-center justify-center min-h-[100px]">
+                @if($isReadyToReveal)
+                    <button x-on:click="stop()"
+                        class="group relative px-16 py-5 bg-red-600 text-white rounded-2xl text-xl font-black uppercase tracking-widest shadow-[0_10px_40px_rgba(220,38,38,0.4)] hover:bg-red-700 transition-all hover:scale-105 active:scale-95 flex items-center gap-4">
+                        <x-heroicon-s-bolt class="w-7 h-7 group-hover:animate-bounce" />
+                        STOP DRAWING
+                    </button>
+                    <p class="text-center text-[10px] text-slate-400 uppercase tracking-widest font-black mt-3 animate-pulse">
+                        Click to stop and reveal winners
+                    </p>
+                @else
+                    <div class="flex items-center gap-4 px-10 py-5 bg-white border border-[#2d7a8e]/20 text-[#2d7a8e] rounded-2xl shadow-sm">
+                        <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <div class="flex flex-col text-left">
+                            <span class="font-black text-sm uppercase tracking-widest">Processing Draw...</span>
+                            <span class="font-bold text-[10px] uppercase text-[#2d7a8e]/70 tracking-wider">Please wait until system picks winners</span>
+                        </div>
+                    </div>
+                @endif
             </div>
         </div>
     @elseif (!empty($winners))

@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Gate;
 use Modules\UserManagement\Models\User;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Auth\Events\Login;
+use OwenIt\Auditing\Models\Audit;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -33,6 +36,22 @@ class AppServiceProvider extends ServiceProvider
 
         \Filament\Actions\BulkAction::configureUsing(function (\Filament\Actions\BulkAction $action) {
             // Optional: Handle bulk actions if needed
+        });
+
+        Event::listen(Login::class, function (Login $event) {
+            Audit::create([
+                'user_type'      => get_class($event->user),
+                'user_id'        => $event->user->getAuthIdentifier(),
+                'event'          => 'login',
+                'auditable_type' => get_class($event->user),
+                'auditable_id'   => $event->user->getAuthIdentifier(),
+                'old_values'     => [],
+                'new_values'     => [],
+                'url'            => request()->fullUrl(),
+                'ip_address'     => request()->ip(),
+                'user_agent'     => request()->userAgent(),
+                'tags'           => 'auth,login',
+            ]);
         });
     }
 

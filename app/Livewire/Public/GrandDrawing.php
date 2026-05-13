@@ -207,6 +207,20 @@ class GrandDrawing extends Component
             'created_by' => Auth::user()->name ?? 'Public Guest',
         ]);
 
+        \OwenIt\Auditing\Models\Audit::create([
+            'user_type'      => Auth::check() ? get_class(Auth::user()) : null,
+            'user_id'        => Auth::id(),
+            'event'          => 'started_grand_draw',
+            'auditable_type' => get_class($this->eventPrize),
+            'auditable_id'   => $this->eventPrize->id,
+            'old_values'     => [],
+            'new_values'     => ['batch_id' => $batch->id, 'total_to_draw' => $totalToDraw, 'session_id' => $this->drawSessionId],
+            'url'            => request()->fullUrl(),
+            'ip_address'     => request()->ip(),
+            'user_agent'     => request()->userAgent(),
+            'tags'           => 'doorprize,grand_draw,start',
+        ]);
+
         $this->batchId = $batch->id;
         $this->batchStatus = 'PENDING';
         $this->totalToProcess = $totalToDraw;
@@ -268,6 +282,20 @@ class GrandDrawing extends Component
             }
         }
         
+        \OwenIt\Auditing\Models\Audit::create([
+            'user_type'      => Auth::check() ? get_class(Auth::user()) : null,
+            'user_id'        => Auth::id(),
+            'event'          => 'stopped_grand_draw',
+            'auditable_type' => get_class($this->eventPrize),
+            'auditable_id'   => $this->eventPrize->id,
+            'old_values'     => [],
+            'new_values'     => ['batch_id' => $this->batchId, 'session_id' => $this->drawSessionId],
+            'url'            => request()->fullUrl(),
+            'ip_address'     => request()->ip(),
+            'user_agent'     => request()->userAgent(),
+            'tags'           => 'doorprize,grand_draw,stop',
+        ]);
+
         $this->isStopping = true;
         $this->finalizeResults();
     }
