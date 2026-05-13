@@ -203,7 +203,7 @@
 
     @if ($isDrawing)
         <!-- Loading State with Infinite Shuffling Animation -->
-        <div class="bg-white mt-10 border border-slate-200 rounded-[2.5rem] p-10 md:p-16 shadow-2xl shadow-[#2d7a8e]/10 flex flex-col items-center relative overflow-hidden">
+        <div class="bg-white mt-10 border border-slate-200 rounded-[2.5rem] p-10 md:p-16 shadow-2xl shadow-[#2d7a8e]/10 flex flex-col items-center relative overflow-hidden w-full max-w-[100rem]">
 
             <!-- Inner Pattern -->
             <div class="absolute inset-0 opacity-[0.03] pointer-events-none"
@@ -300,7 +300,7 @@
             </div>
         </div>
     @elseif (!empty($winners))
-        <div class="relative z-10 w-full max-w-10xl mt-10">
+        <div class="relative z-10 w-full max-w-[100rem] mt-10">
             <!-- Winners Found State -->
             <div x-init="triggerWin()"
                 class="bg-white border border-slate-200 rounded-[2.5rem] p-6 md:p-10 shadow-2xl shadow-[#2d7a8e]/10 relative">
