@@ -49,6 +49,7 @@ Managed via the **User Management** module.
 - **Users**: Create and manage staff accounts.
 - **Roles & Permissions**: Assign roles such as `Super Admin`, `Admin`, `Maker`, or `Checker`.
 - **Shield**: Advanced permission management to restrict access to specific resources (e.g., only certain users can view the Reports).
+- **Audit Logs**: All major user activities are automatically tracked. This includes capturing user logins and exactly when a user starts or stops a public drawing session. You can review these in the **Audits** menu.
 
 ---
 
@@ -136,7 +137,8 @@ To prevent errors or fraud, critical actions follow the Approval Workflow:
 
 Data can be retrieved in multiple formats:
 
-- **CSV/Excel Exports**: Available on most tables (Users, Winners, Customers).
+- **CSV/Excel Exports**: Available on most tables (Users, Winners, Customers). 
+- **Data Export Hub**: A specialized menu for exporting massive, gigabyte-sized CSV files directly from the Main database and T24 databases safely using background jobs. These exports automatically group unique accounts and format the data cleanly without duplicating rows.
 - **PDF Bank Statements**: Generate personalized statements for customers showing their ticket ranges and points for a specific month.
 - **Reporting Dashboard**: Summary widgets and specialized export actions.
 
@@ -157,6 +159,10 @@ Staff with administrative access can fine-tune the system's behavior via the **S
     - `Draw Delay`: The duration (in seconds) of the drawing animation.
 - **Reporting**:
     - `Merge PDF Bank Statement`: Toggles whether PDF statements are merged or generated individually.
+- **System Maintenance & Security**:
+    - `application_locked` (Boolean): Set to `1` to instantly lock all regular users out of the system, forcing a `503 Service Unavailable` page. Only users with the `super_admin` or `Admin` roles can bypass this. The Public Draw screens will remain active during a lock.
+    - `application_locked_excluded_emails` (String): A comma-separated list of user emails (e.g., `user1@example.com, user2@example.com`) who are allowed to bypass the application lock.
+    - `application_locked_excluded_roles` (String): A comma-separated list of roles (e.g., `IT Staff, Manager`) that are allowed to bypass the application lock.
 
 ---
 

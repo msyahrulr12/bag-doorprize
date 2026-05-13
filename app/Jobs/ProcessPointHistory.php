@@ -305,19 +305,28 @@ class ProcessPointHistory implements ShouldQueue
                 $growth = $currAmt - $prevAmt;
 
                 if ($growth < 0) {
-                    // Negative growth → expire/reset all accumulated points
-                    $participant = $participants[$accId] ?? null;
-                    $pid         = $participant?->id;
-                    $ledgerSum   = (int) ($currentLedgerPoints[$accId] ?? 0);
-                    $points      = $ledgerSum > 0 ? -$ledgerSum : 0;
+                    $threshold = (float) ($this->settings['threshold_reduction_balance'] ?? 100000);
+                    
+                    if (abs($growth) > $threshold) {
+                        // Negative growth exceeds threshold → expire/reset all accumulated points
+                        $participant = $participants[$accId] ?? null;
+                        $pid         = $participant?->id;
+                        $ledgerSum   = (int) ($currentLedgerPoints[$accId] ?? 0);
+                        $points      = $ledgerSum > 0 ? -$ledgerSum : 0;
 
-                    $phType   = PointHistory::POINT_TYPE_EXPIRED;
-                    $typeText = 'BERKURANG';
+                        $phType   = PointHistory::POINT_TYPE_EXPIRED;
+                        $typeText = 'BERKURANG';
 
-                    if ($pid) {
-                        $accountsToReset[] = $pid;
+                        if ($pid) {
+                            $accountsToReset[] = $pid;
+                        }
+                    } else {
+                        // Negative growth but within threshold (e.g. admin fees)
+                        // Do not reset points. Just earn 0 points for this month.
+                        $phType   = PointHistory::POINT_TYPE_EARN;
+                        $typeText = 'BERTAMBAH';
+                        $points   = 0;
                     }
-
                 } elseif ($growth > 0) {
                     // Positive growth → award points
                     $openingPoint = 0;
