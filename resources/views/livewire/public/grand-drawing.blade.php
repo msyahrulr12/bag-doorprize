@@ -28,13 +28,18 @@
                     const fallbackNames = names.length > 0 ? names : ['Wibowo', 'Sari', 'Pratama', 'Lestari', 'Budi', 'Putri'];
                     const fallbackBranches = branches.length > 0 ? branches : ['JAKARTA', 'SURABAYA', 'BANDUNG', 'MEDAN'];
                     const count = total > 0 ? total : 1;
-                    this.placeholders = Array.from({length: count}).map(() => ({
+                    const items = Array.from({length: count}).map(() => ({
                         name: fallbackNames[Math.floor(Math.random() * fallbackNames.length)] + ' *** ' + fallbackNames[Math.floor(Math.random() * fallbackNames.length)],
                         branch: fallbackBranches[Math.floor(Math.random() * fallbackBranches.length)],
                         lucky_number: Math.floor(Math.random() * 99999999).toString().padStart(9, '0')
                     }));
-                    if (this.placeholders[0]) {
-                        this.number = this.placeholders[0].lucky_number;
+                    this.placeholders = [
+                        items.filter((_, i) => i % 3 === 0),
+                        items.filter((_, i) => i % 3 === 1),
+                        items.filter((_, i) => i % 3 === 2),
+                    ];
+                    if (this.placeholders[0] && this.placeholders[0][0]) {
+                        this.number = this.placeholders[0][0].lucky_number;
                     }
                 }
             }, 80);
@@ -247,20 +252,35 @@
                 </div>
             </div>
 
-            <!-- Placeholder Cards -->
-            <div class="relative z-10 w-full max-w-5xl">
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
-                    <template x-for="(p, i) in placeholders" :key="i">
-                        <div class="bg-white border border-slate-100 rounded-2xl p-3 flex items-center gap-3 shadow-sm opacity-60">
-                            <div class="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center shrink-0 border border-slate-100">
-                                <x-heroicon-o-sparkles class="w-5 h-5 text-[#2d7a8e]/40" />
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <div class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5 truncate" x-text="p.branch"></div>
-                                <h4 class="font-black text-slate-600 text-[10px] truncate" x-text="p.name"></h4>
-                            </div>
-                            <div class="text-right shrink-0">
-                                <div class="text-xs font-black font-mono text-[#2d7a8e] tracking-tighter" x-text="p.lucky_number"></div>
+            <!-- Placeholder Tables -->
+            <div class="relative z-10 w-full max-w-10xl">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 w-full">
+                    <template x-for="(chunk, cIndex) in placeholders" :key="cIndex">
+                        <div class="overflow-hidden border border-slate-100 rounded-3xl shadow-sm bg-white opacity-50">
+                            <div class="max-h-[50vh] overflow-y-auto sync-scroll scrollbar-hide" :x-ref="'table-' + cIndex" @scroll="syncScroll">
+                                <table class="w-full text-left border-collapse">
+                                    <thead class="sticky top-0 bg-slate-50 z-10">
+                                        <tr>
+                                            <th class="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Winner Info</th>
+                                            <th class="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Ticket</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-50">
+                                        <template x-for="(p, i) in chunk" :key="i">
+                                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                                <td class="px-2 py-1">
+                                                    <div class="flex flex-col">
+                                                        <span class="text-[8px] font-black text-slate-800" x-text="p.name"></span>
+                                                        <span class="text-[8px] font-bold text-slate-500 uppercase tracking-tight" x-text="p.branch"></span>
+                                                    </div>
+                                                </td>
+                                                <td class="px-2 py-1 text-center">
+                                                    <span class="inline-block px-2 py-1 bg-[#2d7a8e]/5 text-[#2d7a8e] rounded-lg font-black font-mono text-[8px] border border-[#2d7a8e]/10 shadow-sm leading-none" x-text="p.lucky_number"></span>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </template>
@@ -295,7 +315,7 @@
                             </h3>
                             <p class="text-slate-500 font-medium">
                                 @if ($isPreview)
-                                    {{ count($pendingWinners) }} winner(s) staged for review
+                                    {{ count($pendingWinners) }} winner(s) detected for review
                                 @else
                                     {{ $this->paginatedWinners->total() }} winners recorded
                                 @endif
@@ -305,15 +325,19 @@
 
                     <div class="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
                         <div class="flex space-x-2 mr-2">
-                            <button wire:click="exportCsv"
-                                class="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-lg text-[10px] font-black uppercase hover:bg-green-100 transition-colors border border-green-100 shadow-sm">
-                                <x-heroicon-o-document-text class="w-3.5 h-3.5" />
-                                CSV
+                            <button wire:click="exportCsv" wire:loading.attr="disabled"
+                                class="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-lg text-[10px] font-black uppercase hover:bg-green-100 transition-colors border border-green-100 shadow-sm relative overflow-hidden group">
+                                <x-heroicon-o-document-text class="w-3.5 h-3.5 group-hover:scale-110 transition-transform" wire:loading.remove wire:target="exportCsv" />
+                                <x-filament::loading-indicator class="w-3.5 h-3.5 animate-spin" wire:loading wire:target="exportCsv" />
+                                <span wire:loading.remove wire:target="exportCsv">CSV</span>
+                                <span wire:loading wire:target="exportCsv">...</span>
                             </button>
-                            <button wire:click="exportExcel"
-                                class="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-100 transition-colors border border-emerald-100 shadow-sm">
-                                <x-heroicon-o-table-cells class="w-3.5 h-3.5" />
-                                EXCEL
+                            <button wire:click="exportExcel" wire:loading.attr="disabled"
+                                class="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-100 transition-colors border border-emerald-100 shadow-sm relative overflow-hidden group">
+                                <x-heroicon-o-table-cells class="w-3.5 h-3.5 group-hover:scale-110 transition-transform" wire:loading.remove wire:target="exportExcel" />
+                                <x-filament::loading-indicator class="w-3.5 h-3.5 animate-spin" wire:loading wire:target="exportExcel" />
+                                <span wire:loading.remove wire:target="exportExcel">EXCEL</span>
+                                <span wire:loading wire:target="exportExcel">...</span>
                             </button>
                         </div>
                     </div>

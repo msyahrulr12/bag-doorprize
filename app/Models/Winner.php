@@ -107,7 +107,7 @@ class Winner extends Model implements Auditable
 
     public function getDataBulk()
     {
-        $this->load(['participant.account.branch']);
+        $this->loadMissing(['participant.account.branch']);
 
         return [
             'id' => $this->id,

@@ -306,7 +306,7 @@ class GrandDrawing extends Component
             $this->confirmWinners();
             $this->dispatch('success', message: 'Winner confirmed and saved successfully!');
         } else {
-            $this->dispatch('success', message: 'Winners have been picked and staged for review.');
+            $this->dispatch('success', message: 'Winners have been picked and prepared for review.');
         }
     }
 
@@ -492,26 +492,24 @@ class GrandDrawing extends Component
 
     public function exportCsv($extension = 'csv')
     {
-        $winnersToExport = [];
-        
-        // 1. Try to fetch confirmed winners first
-        $winnersToExport = Winner::where('event_prize_id', $this->eventPrize->id)
+        // Fetch confirmed winners
+        $confirmedWinners = Winner::where('event_prize_id', $this->eventPrize->id)
             ->where('draw_session_id', $this->drawSessionId)
             ->get()
             ->map(fn(Winner $w) => $w->getDataBulk());
 
-        // 2. If no confirmed winners found, fetch temporary winners
-        if ($winnersToExport->isEmpty()) {
-            $winnersToExport = TemporaryWinner::where('event_prize_id', $this->eventPrize->id)
-                ->where('draw_session_id', $this->drawSessionId)
-                ->get()
-                ->map(fn(TemporaryWinner $tw) => $tw->getData());
+        // Fetch temporary winners
+        $tempWinners = TemporaryWinner::where('event_prize_id', $this->eventPrize->id)
+            ->where('draw_session_id', $this->drawSessionId)
+            ->get()
+            ->map(fn(TemporaryWinner $tw) => $tw->getData());
+
+        $winnersToExport = $confirmedWinners->concat($tempWinners)->toArray();
+
+        if (empty($winnersToExport)) {
+            $this->dispatch('error', message: 'No winners found to export.');
+            return;
         }
-
-        $winnersToExport = $winnersToExport->toArray();
-
-        if (empty($winnersToExport))
-            return null;
 
         $filename = "grand_winners_" . str_replace([' ', '/', '\\'], '_', $this->eventPrize->prize->prize_name) . "_" . now()->format('Ymd_His') . "." . $extension;
 
