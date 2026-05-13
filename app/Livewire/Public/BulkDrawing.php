@@ -433,12 +433,22 @@ class BulkDrawing extends Component
     public function exportCsv($extension = 'csv')
     {
         $winnersToExport = [];
-        if (empty($winnersToExport) || count($winnersToExport) == 0) {
-            $winnersToExport = Winner::where('event_prize_id', $this->eventPrize->id)
+        
+        // 1. Try to fetch confirmed winners first
+        $winnersToExport = Winner::where('event_prize_id', $this->eventPrize->id)
+            ->where('draw_session_id', $this->drawSessionId)
+            ->get()
+            ->map(fn(Winner $w) => $w->getDataBulk());
+
+        // 2. If no confirmed winners found, fetch temporary winners
+        if ($winnersToExport->isEmpty()) {
+            $winnersToExport = TemporaryWinner::where('event_prize_id', $this->eventPrize->id)
                 ->where('draw_session_id', $this->drawSessionId)
                 ->get()
-                ->map(fn(Winner $w) => $w->getDataBulk());
+                ->map(fn(TemporaryWinner $tw) => $tw->getData());
         }
+
+        $winnersToExport = $winnersToExport->toArray();
 
         if (empty($winnersToExport))
             return null;
@@ -480,7 +490,7 @@ class BulkDrawing extends Component
                         <td>' . ($w['product_name'] ?? 'N/A') . '</td>
                         <td>' . ($w['product_code'] ?? 'N/A') . '</td>
                         <td>' . ($w['account_status'] ?? 'N/A') . '</td>
-                        <td>' . now()->format('Y-m-d H:i:s') . '</td>
+                        <td>' . ($w['drawn_at'] ?? now()->format('Y-m-d H:i:s')) . '</td>
                     </tr>';
                 }
                 echo '</tbody></table></body></html>';
@@ -504,7 +514,7 @@ class BulkDrawing extends Component
                     $w['product_name'] ?? 'N/A',
                     $w['product_code'] ?? 'N/A',
                     $w['account_status'] ?? 'N/A',
-                    now()->format('Y-m-d H:i:s'),
+                    $w['drawn_at'] ?? now()->format('Y-m-d H:i:s'),
                 ]);
             }
             fclose($file);

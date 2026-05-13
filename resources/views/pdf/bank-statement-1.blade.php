@@ -1,6 +1,12 @@
 @php
-    $type = pathinfo(public_path('images/background-image.png'), PATHINFO_EXTENSION);
-    $data = file_get_contents(public_path('images/background-image.png'));
+    $bgPath = public_path('images/background-image.png');
+    $type = 'png';
+    $base64 = '';
+    if (file_exists($bgPath)) {
+        $type = pathinfo($bgPath, PATHINFO_EXTENSION);
+        $data = file_get_contents($bgPath);
+        $base64 = base64_encode($data);
+    }
 @endphp
 
 <!DOCTYPE html>
@@ -14,19 +20,25 @@
             margin: 0cm;
         }
 
+        html,
         body {
             font-family: Arial, sans-serif;
             margin: 0;
-            /* padding: 30px; */
-            padding: 40px 50px;
-            background-image: url({{ 'data:image/' . $type . ';base64,' . base64_encode($data) }});
+            padding: 0;
+            width: 100%;
+        }
+
+        body {
+            @if($base64)
+            background-image: url({{ 'data:image/' . $type . ';base64,' . $base64 }});
+            @endif
             background-size: 400px;
             background-repeat: no-repeat;
             background-position: center;
         }
 
         .container {
-            width: 100%;
+            padding: 40px 50px 80px 50px;
         }
 
         /* Header Section menggunakan Table */
@@ -79,8 +91,11 @@
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 25px;
-            border-radius: 50%;
+            table-layout: fixed; /* Added table-layout: fixed */
+        }
 
+        .coupon-table tr {
+            page-break-inside: avoid;
         }
 
         .coupon-table thead th {
@@ -96,9 +111,9 @@
         .coupon-table tbody td {
             padding: 10px 5px;
             text-align: center;
-            /* border: 1px solid #eeeeee; */
             border: transparent;
             font-size: 8px;
+            word-wrap: break-word; /* Ensure text wraps */
         }
 
         .bg-gray {
@@ -202,19 +217,53 @@
 </head>
 
 <body>
+    <div style="width: 100%; background-color: #2d7a8e; bottom: 0; left: 0; right: 0; position: fixed;">
+        <table width="100%" style="padding: 6px 8px; margin: 0;">
+            <tr>
+                <td>
+                    @php
+                        $footerPath = public_path('images/footer.png');
+                        $footerBase64 = '';
+                        if (file_exists($footerPath)) {
+                            $footerBase64 = base64_encode(file_get_contents($footerPath));
+                        }
+                    @endphp
+                    @if($footerBase64)
+                    <img src="data:image/png;base64,{{ $footerBase64 }}"
+                        width="100%">
+                    @endif
+                </td>
+            </tr>
+        </table>
+    </div>
+    
     <div class="container">
         <!-- Header -->
         <table class="header-table" style="height: 100px;">
             <tr>
                 <td style=" width: 60%; vertical-align: middle;">
-                    <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/agi-bank-logo.png'))) }}"
+                    @php
+                        $agiBankLogoPath = public_path('images/agi-bank-logo.png');
+                        $logoAgiPath = public_path('images/logo-agi.png');
+                        $logoProgramPath = public_path('images/logo-program.png');
+                        $agiBankLogoBase64 = file_exists($agiBankLogoPath) ? base64_encode(file_get_contents($agiBankLogoPath)) : '';
+                        $logoAgiBase64 = file_exists($logoAgiPath) ? base64_encode(file_get_contents($logoAgiPath)) : '';
+                        $logoProgramBase64 = file_exists($logoProgramPath) ? base64_encode(file_get_contents($logoProgramPath)) : '';
+                    @endphp
+                    @if($agiBankLogoBase64)
+                    <img src="data:image/png;base64,{{ $agiBankLogoBase64 }}"
                         class="logo-section-img" style="vertical-align: middle;" height="auto">
-                    <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/logo-agi.png'))) }}"
+                    @endif
+                    @if($logoAgiBase64)
+                    <img src="data:image/png;base64,{{ $logoAgiBase64 }}"
                         class="logo-section-img" style="vertical-align: middle;" height="auto">
+                    @endif
                 </td>
                 <td style="width: 40%; text-align: right;">
-                    <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/logo-program.png'))) }}"
+                    @if($logoProgramBase64)
+                    <img src="data:image/png;base64,{{ $logoProgramBase64 }}"
                         class="bagi-hoki-logo-img" width="200px" height="auto">
+                    @endif
                 </td>
             </tr>
         </table>
@@ -241,13 +290,13 @@
         <table class="coupon-table">
             <thead>
                 <tr>
-                    <th>No</th>
-                    <th>Periode</th>
-                    <th>Penambahan Kupon</th>
-                    <th>Pengurangan Kupon</th>
-                    <th>Nomor Kupon</th>
-                    <th>Saldo Kupon</th>
-                    <th>Keterangan</th>
+                    <th style="width: 5%;">No</th>
+                    <th style="width: 15%;">Periode</th>
+                    <th style="width: 15%;">Penambahan Kupon</th>
+                    <th style="width: 15%;">Pengurangan Kupon</th>
+                    <th style="width: 20%;">Nomor Kupon</th>
+                    <th style="width: 10%;">Saldo Kupon</th>
+                    <th style="width: 20%;">Keterangan</th>
                 </tr>
             </thead>
             <tbody>
@@ -308,22 +357,18 @@
                 </td>
                 <td style="width: 30%; text-align: right; vertical-align: bottom;">
                     <div class="hadiah-box">
+                        @php
+                            $hadiahPath = public_path('images/hadiah.png');
+                            $hadiahBase64 = file_exists($hadiahPath) ? base64_encode(file_get_contents($hadiahPath)) : '';
+                        @endphp
+                        @if($hadiahBase64)
                         <img
-                            src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/hadiah.png'))) }}">
+                            src="data:image/png;base64,{{ $hadiahBase64 }}">
+                        @endif
                     </div>
                 </td>
             </tr>
         </table>
-        <div style="width: 100%; background-color: #2d7a8e; bottom: 0; left:0; position: fixed;">
-            <table width="90%" style="padding: 6px 8px; margin: 0 auto;">
-                <tr>
-                    <td>
-                        <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/footer.png'))) }}"
-                            width="100%">
-                    </td>
-                </tr>
-            </table>
-        </div>
     </div>
 </body>
 

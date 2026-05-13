@@ -29,6 +29,9 @@ class BranchForm
                         Select::make('region')
                             ->options(\App\Models\Branch::REGIONS)
                             ->required(),
+                        Select::make('status')
+                            ->options(\App\Models\Branch::STATUS)
+                            ->required(),
                         Textarea::make('address')
                             ->columnSpanFull(),
                         Textarea::make('description')

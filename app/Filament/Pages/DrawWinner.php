@@ -482,7 +482,7 @@ class DrawWinner extends Page implements HasForms
             });
 
         if ($region) {
-            $query->whereHas('participant.account.branch', fn($q) => $q->where('region', $region));
+            $query->whereHas('participant.account.branch', fn($q) => $q->whereRaw('UPPER(region) = ?', [strtoupper(trim($region))]));
         }
 
         $tickets = $query->get();

@@ -31,7 +31,7 @@ class PdfBankStatement extends Widget implements HasForms
 
     public function mount($customer): void
     {
-        $this->cutomer = $customer;
+        $this->customer = $customer;
         $this->form->fill([
             'account_number' => $customer->accounts[0]->id ?? 'N/A',
             'month' => now()->month,
@@ -150,7 +150,12 @@ class PdfBankStatement extends Widget implements HasForms
             return;
         }
 
-        $coupons = $tickets->map(function ($ticket) {
+        $totalPoints = 0;
+        $totalPointDescriptions = "";
+        $totalPenambahan = 0;
+        $totalPengurangan = 0;
+
+        $coupons = $tickets->map(function ($ticket) use (&$totalPenambahan, &$totalPengurangan) {
             if ($ticket->status == LotteryTicket::STATUS_ACTIVE) {
                 $penambahan = $ticket->total_points;
                 $pengurangan = 0;
@@ -161,6 +166,9 @@ class PdfBankStatement extends Widget implements HasForms
                 $penambahan = 0;
                 $pengurangan = $ticket->total_points;
             }
+
+            $totalPenambahan += $penambahan;
+            $totalPengurangan += $pengurangan;
 
             $saldo = $ticket->total_points - $pengurangan;
 
@@ -174,6 +182,14 @@ class PdfBankStatement extends Widget implements HasForms
             ];
         })->toArray();
 
+        $totalPoints = max(0, $totalPenambahan - $totalPengurangan);
+        if ($totalPenambahan > 0) {
+            $totalPointDescriptions .= "REK {$accountNumber} BERTAMBAH {$totalPenambahan} KUPON<br>";
+        }
+        if ($totalPengurangan > 0) {
+            $totalPointDescriptions .= "REK {$accountNumber} BERKURANG {$totalPengurangan} KUPON<br>";
+        }
+
         $data = [
             'account_number' => $accountNumber ?? 'N/A',
             'branch' => $this->customer->branch->branch_name ?? 'CABANG KPO SUDIRMAN',
@@ -183,7 +199,9 @@ class PdfBankStatement extends Widget implements HasForms
             'coupons' => $coupons,
             'showSuccessMessage' => $tickets[count($tickets) - 1]->status == LotteryTicket::STATUS_RESET ? false : true,
             'monthName' => DateHelper::MONTHS[$month],
-            'year' => $year
+            'year' => $year,
+            'totalPoints' => number_format($totalPoints, 0, ',', '.'),
+            'totalPointDescriptions' => $totalPointDescriptions
         ];
 
         $pdf = DomPDF::loadView('pdf.bank-statement-1', $data)

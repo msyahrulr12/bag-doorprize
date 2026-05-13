@@ -114,6 +114,7 @@ class DocumentTable extends TableWidget
                                     ->send();
                             }
                         } catch (\Exception $e) {
+                            dd($e->getTraceAsString());
                             \Filament\Notifications\Notification::make()
                                 ->title('Resend Error')
                                 ->body($e->getMessage())

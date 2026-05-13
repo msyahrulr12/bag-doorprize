@@ -79,6 +79,19 @@ class CreateLotteryTickets implements ShouldQueue
             $startTicketNumber = DB::transaction(function () use ($eventId, $totalNewPoints) {
                 $eventRecord = Event::where('id', $eventId)->lockForUpdate()->first();
                 $currentLast = (int) ($eventRecord->last_ticket_number ?? 0);
+
+                // Add validation based on latest data on lottery_tickets
+                $latestTicket = LotteryTicket::where('event_id', $eventId)
+                    ->orderByDesc('range_end')
+                    ->first();
+
+                if ($latestTicket) {
+                    $latestParsed = \App\Utils\TicketHelper::parse($latestTicket->range_end) + 1;
+                    if ($latestParsed > $currentLast) {
+                        $currentLast = $latestParsed;
+                    }
+                }
+
                 $eventRecord->update(['last_ticket_number' => $currentLast + $totalNewPoints]);
                 return $currentLast;
             });

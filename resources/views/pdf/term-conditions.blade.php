@@ -1,6 +1,12 @@
 @php
-    $type = pathinfo(public_path('images/background-image.png'), PATHINFO_EXTENSION);
-    $data = file_get_contents(public_path('images/background-image.png'));
+    $bgPath = public_path('images/background-image.png');
+    $type = 'png';
+    $base64 = '';
+    if (file_exists($bgPath)) {
+        $type = pathinfo($bgPath, PATHINFO_EXTENSION);
+        $data = file_get_contents($bgPath);
+        $base64 = base64_encode($data);
+    }
 @endphp
 
 <!DOCTYPE html>
@@ -241,14 +247,28 @@
         <table class="header-table">
             <tr>
                 <td style="width: 60%; vertical-align: middle;">
-                    <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/agi-bank-logo.png'))) }}"
+                    @php
+                        $agiBankLogoPath = public_path('images/agi-bank-logo.png');
+                        $logoAgiPath = public_path('images/logo-agi.png');
+                        $logoProgramPath = public_path('images/logo-program.png');
+                        $agiBankLogoBase64 = file_exists($agiBankLogoPath) ? base64_encode(file_get_contents($agiBankLogoPath)) : '';
+                        $logoAgiBase64 = file_exists($logoAgiPath) ? base64_encode(file_get_contents($logoAgiPath)) : '';
+                        $logoProgramBase64 = file_exists($logoProgramPath) ? base64_encode(file_get_contents($logoProgramPath)) : '';
+                    @endphp
+                    @if($agiBankLogoBase64)
+                    <img src="data:image/png;base64,{{ $agiBankLogoBase64 }}"
                         class="logo-section-img" style="vertical-align: middle;" height="auto">
-                    <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/logo-agi.png'))) }}"
+                    @endif
+                    @if($logoAgiBase64)
+                    <img src="data:image/png;base64,{{ $logoAgiBase64 }}"
                         class="logo-section-img" style="vertical-align: middle;" height="auto">
+                    @endif
                 </td>
                 <td style="width: 40%; text-align: right;">
-                    <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/logo-program.png'))) }}"
+                    @if($logoProgramBase64)
+                    <img src="data:image/png;base64,{{ $logoProgramBase64 }}"
                         class="bagi-hoki-logo-img" width="200px" height="auto">
+                    @endif
                 </td>
             </tr>
         </table>
@@ -557,8 +577,14 @@
                 <table width="100%" style="margin: 0 auto;">
                     <tr>
                         <td style="text-align: center;">
-                            <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/footer.png'))) }}"
+                            @php
+                                $footerPath = public_path('images/footer.png');
+                                $footerBase64 = file_exists($footerPath) ? base64_encode(file_get_contents($footerPath)) : '';
+                            @endphp
+                            @if($footerBase64)
+                            <img src="data:image/png;base64,{{ $footerBase64 }}"
                                 style="max-width: 100%; height: auto;">
+                            @endif
                         </td>
                     </tr>
                 </table>

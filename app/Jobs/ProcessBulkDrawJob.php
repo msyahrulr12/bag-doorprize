@@ -108,8 +108,8 @@ class ProcessBulkDrawJob implements ShouldQueue
             $results = [];
             $usedCustomerIds = [];
 
-            // Group tickets by region
-            $regionGroups = $tickets->groupBy('region');
+            // Group tickets by region (normalized to UPPERCASE for weight matching)
+            $regionGroups = $tickets->groupBy(fn($t) => strtoupper(trim($t->region ?? 'LAINNYA')));
 
             for ($i = 0; $i < $drawCount; $i++) {
                 // Determine target region
@@ -189,6 +189,7 @@ class ProcessBulkDrawJob implements ShouldQueue
     {
         $eligibleTickets = collect();
         if ($targetRegion) {
+            $targetRegion = strtoupper(trim($targetRegion));
             $eligibleTickets = ($regionGroups[$targetRegion] ?? collect())->reject(fn($t) => in_array($t->customer_id, $usedCustomerIds));
             if ($eligibleTickets->isEmpty()) {
                 $otherRegions = array_keys(collect($weights)->sortByDesc(fn($w) => $w)->toArray());

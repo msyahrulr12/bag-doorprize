@@ -20,6 +20,9 @@ class DrawSessionExporter extends Exporter
             ExportColumn::make('name'),
             ExportColumn::make('started_at'),
             ExportColumn::make('ended_at'),
+            ExportColumn::make('winners_count')
+                ->label('Total Winners')
+                ->state(fn (DrawSession $record): int => ($record->winners_count ?? 0) + ($record->temporary_winners_count ?? 0)),
             ExportColumn::make('total_lottery_generated'),
             ExportColumn::make('status'),
             ExportColumn::make('description'),

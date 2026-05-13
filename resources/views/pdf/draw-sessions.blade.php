@@ -53,7 +53,7 @@
                     <td>{{ $record->status }}</td>
                     <td>{{ $record->started_at?->format('Y-m-d H:i:s') }}</td>
                     <td>{{ $record->ended_at?->format('Y-m-d H:i:s') }}</td>
-                    <td>{{ $record->total_lottery_generated }}</td>
+                    <td>{{ $record->winners_count + $record->temporary_winners_count }}</td>
                 </tr>
             @endforeach
         </tbody>

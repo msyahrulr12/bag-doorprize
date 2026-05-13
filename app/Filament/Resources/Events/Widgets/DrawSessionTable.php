@@ -27,7 +27,7 @@ class DrawSessionTable extends TableWidget
     {
         return $table
             ->query(function () {
-                $query = DrawSession::query()->withCount('winners')->orderBy('started_at', 'asc');
+                $query = DrawSession::query()->withCount(['winners', 'temporaryWinners'])->orderBy('started_at', 'asc');
                 if ($this->record) {
                     $query->where('event_id', $this->record->id);
                 } elseif ($this->event_id) {
@@ -55,6 +55,7 @@ class DrawSessionTable extends TableWidget
                     ->sortable(),
                 TextColumn::make('winners_count')
                     ->label('Total Winners')
+                    ->getStateUsing(fn (DrawSession $record): int => $record->winners_count + $record->temporary_winners_count)
                     ->numeric()
                     ->sortable(),
                 TextColumn::make('created_at')
@@ -71,7 +72,7 @@ class DrawSessionTable extends TableWidget
                     ->color('danger')
                     ->icon('heroicon-o-document-text')
                     ->action(function () {
-                        $query = DrawSession::query()->orderBy('started_at', 'asc');
+                        $query = DrawSession::query()->withCount(['winners', 'temporaryWinners'])->orderBy('started_at', 'asc');
                         if ($this->record) {
                             $query->where('event_id', $this->record->id);
                         } elseif ($this->event_id) {

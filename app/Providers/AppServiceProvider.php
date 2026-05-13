@@ -18,6 +18,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->register(\Modules\LogManagement\Providers\LogManagementServiceProvider::class);
         $this->app->register(\Modules\UserManagement\Providers\UserManagementServiceProvider::class);
+        $this->app->register(\Modules\ProcessManagement\Providers\ProcessManagementServiceProvider::class);
         $this->app->bind(Authenticatable::class, User::class);
     }
 

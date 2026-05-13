@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\DrawSessions\Tables;
 
 use App\Filament\Exports\DrawSessionExporter;
+use App\Models\DrawSession;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -32,6 +33,11 @@ class DrawSessionsTable
                     ->sortable(),
                 TextColumn::make('ended_at')
                     ->dateTime()
+                    ->sortable(),
+                TextColumn::make('winners_count')
+                    ->label('Total Winners')
+                    ->getStateUsing(fn (DrawSession $record): int => ($record->winners_count ?? 0) + ($record->temporary_winners_count ?? 0))
+                    ->numeric()
                     ->sortable(),
                 TextColumn::make('total_lottery_generated')
                     ->numeric()
