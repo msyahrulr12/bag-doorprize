@@ -9,6 +9,7 @@ use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
 use Filament\Resources\Pages\ViewRecord;
 use App\Filament\Resources\Customers\CustomerResource;
+use App\Filament\Resources\Customers\Widgets\AccountsTable;
 use Filament\Schemas\Components\Livewire;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
@@ -37,6 +38,12 @@ class ViewCustomer extends ViewRecord
                                 ? $this->getInfolistContentComponent() // This method returns a component to display the infolist that is defined in this resource
                                 : $this->getFormContentComponent(), // This method returns a component to display the form that is defined in this resource
                                 $this->getRelationManagersContentComponent()
+                            ]),
+                        Tab::make('Accounts')
+                            ->schema([
+                                Livewire::make(AccountsTable::class, [
+                                    'customer' => $this->getRecord()
+                                ])
                             ]),
                         Tab::make('Point History')
                             ->schema([

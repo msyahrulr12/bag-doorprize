@@ -15,7 +15,7 @@ class Account extends Model implements Auditable
         'customer_id',
         'product_id',
         'account_number',
-        'account_type',
+        'accounapp:run-custom-exportt_type',
         'current_balance',
         'cached_points',
         'description',
