@@ -44,8 +44,8 @@ class ApplicationLockMiddleware
              return $next($request);
         }
 
-        // Allow login/logout routes for Filament
-        if ($request->is('admin/login') || $request->is('admin/logout') || $request->routeIs('filament.admin.auth.*')) {
+        // Allow login/logout routes for Filament and the Locked page itself
+        if ($request->is('admin/login') || $request->is('admin/logout') || $request->is('locked') || $request->routeIs('filament.admin.auth.*') || $request->routeIs('locked')) {
             return $next($request);
         }
 
@@ -88,17 +88,12 @@ class ApplicationLockMiddleware
                 }
             }
             
-            // Log out the unauthorized user if they are caught in the lock
-            Auth::guard('web')->logout();
-            $request->session()->invalidate();
-            $request->session()->regenerateToken();
-
-            return redirect()->route('filament.admin.auth.login')->withErrors([
-                'email' => 'The application is currently locked by Administrator for a heavy process. Please try again later.',
-            ]);
+            // Instead of logging out immediately, we redirect them to the locked page
+            // The locked page will handle showing them the 'locked' status and providing a logout button
+            return redirect()->route('locked');
         }
 
-        // If not authenticated and trying to access something else
-        abort(503, 'The application is currently locked for a system process. Please try again later.');
+        // If not authenticated and trying to access something else, redirect to locked page
+        return redirect()->route('locked');
     }
 }

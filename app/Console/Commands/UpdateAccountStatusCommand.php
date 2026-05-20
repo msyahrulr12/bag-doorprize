@@ -82,6 +82,10 @@ class UpdateAccountStatusCommand extends Command
         $records = [];
 
         while (($row = fgetcsv($file)) !== false) {
+            if (count($header) !== count($row)) {
+                $this->error("Header and row count mismatch");
+                continue;
+            }
             $records[] = array_combine($header, $row);
             $rowCount++;
 

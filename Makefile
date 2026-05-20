@@ -2,6 +2,8 @@
 APP_NAME=bag-doorprize
 PACKAGE_NAME=$(APP_NAME)-deploy.tar.gz
 
+PHP_INI_DIR?=$(shell php -r 'echo dirname(php_ini_loaded_file());')
+
 # Octane Configuration (can be overridden via environment variables)
 OCTANE_SERVER?=frankenphp
 OCTANE_HOST?=0.0.0.0
@@ -131,7 +133,7 @@ deploy:
 octane:
 	@echo ">>> Starting Laravel Octane with $(OCTANE_SERVER)..."
 	@echo ">>> Host: $(OCTANE_HOST) | Port: $(OCTANE_PORT) | Workers: $(OCTANE_WORKERS)"
-	php artisan octane:start --server=$(OCTANE_SERVER) --host=$(OCTANE_HOST) --port=$(OCTANE_PORT) --workers=$(OCTANE_WORKERS)
+	PHPRC="$(PHP_INI_DIR)" php artisan octane:start --server=$(OCTANE_SERVER) --host=$(OCTANE_HOST) --port=$(OCTANE_PORT) --workers=$(OCTANE_WORKERS)
 
 queue:
 	@echo ">>> Starting queue worker..."
@@ -202,7 +204,7 @@ supervisor:
 	@echo "[program:laravel-octane]\n\
 	process_name=%(program_name)s\n\
 	directory=$(PROJECT_DIR)\n\
-	command=php artisan octane:start --server=frankenphp --host=0.0.0.0 --port=8000 --workers=4\n\
+	command=env PHPRC=\"$(PHP_INI_DIR)\" php artisan octane:start --server=frankenphp --host=0.0.0.0 --port=8000 --workers=4\n\
 	autostart=true\n\
 	autorestart=true\n\
 	user=$(USER)\n\

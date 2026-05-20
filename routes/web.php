@@ -9,6 +9,7 @@ Route::view('/term-condition', 'pdf.term-conditions')->name('public.term-conditi
 Route::get('/admin/logs', \App\Livewire\Admin\LogViewer::class)->name('admin.logs');
 Route::get('/admin/services', \App\Livewire\Admin\ServiceMonitor::class)->name('admin.services');
 Route::get('/admin/deployment', \App\Livewire\Admin\DeploymentManager::class)->name('admin.deployment');
+Route::view('/locked', 'locked')->name('locked');
 
 // Route::get('/test-pdf', function () {
 //     $coupons = [];

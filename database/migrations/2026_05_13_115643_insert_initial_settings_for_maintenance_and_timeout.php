@@ -16,7 +16,7 @@ return new class extends Migration
             [
                 'group' => 'general',
                 'key' => 'filament_idle_warning_timeout',
-                'value' => '20',
+                'value' => '30',
                 'type' => 'integer',
                 'created_at' => '2026-05-12 15:13:43',
                 'updated_at' => '2026-05-12 15:36:38',
@@ -24,7 +24,7 @@ return new class extends Migration
             [
                 'group' => 'general',
                 'key' => 'filament_idle_timeout',
-                'value' => '3600',
+                'value' => '1800',
                 'type' => 'integer',
                 'created_at' => '2026-05-12 15:13:28',
                 'updated_at' => '2026-05-13 09:18:28',
@@ -32,7 +32,7 @@ return new class extends Migration
             [
                 'group' => 'general',
                 'key' => 'application_locked',
-                'value' => '1',
+                'value' => '0',
                 'type' => 'boolean',
                 'created_at' => '2026-05-13 11:48:53',
                 'updated_at' => '2026-05-13 11:48:53',
@@ -48,7 +48,7 @@ return new class extends Migration
             [
                 'group' => 'general',
                 'key' => 'application_locked_excluded_roles',
-                'value' => null,
+                'value' => 'Program Owner,Siskon Operator,super_admin',
                 'type' => 'string',
                 'created_at' => '2026-05-13 11:49:22',
                 'updated_at' => '2026-05-13 11:49:22',
