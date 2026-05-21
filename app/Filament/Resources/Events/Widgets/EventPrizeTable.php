@@ -4,6 +4,8 @@ namespace App\Filament\Resources\Events\Widgets;
 
 use App\Models\EventPrize;
 use App\Models\Prize;
+use App\Models\TemporaryWinner;
+use App\Models\DrawSession;
 use Event;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
@@ -68,9 +70,23 @@ class EventPrizeTable extends TableWidget
                     ->searchable(),
                 TextColumn::make('remaining_quantity')
                     ->label('Remaining Qty')
+                    ->state(function (EventPrize $record): int {
+                        $activeSessionId = DrawSession::where('event_id', $record->event_id)
+                            ->where('status', DrawSession::STATUS_ACTIVE)
+                            ->where('started_at', '<=', now())
+                            ->where('ended_at', '>=', now())
+                            ->value('id');
+
+                        $staged = $activeSessionId
+                            ? TemporaryWinner::where('event_prize_id', $record->id)
+                                ->where('draw_session_id', $activeSessionId)
+                                ->count()
+                            : 0;
+
+                        return max(0, $record->remaining_quantity - $staged);
+                    })
                     ->numeric()
-                    ->sortable()
-                    ->searchable(),
+                    ->sortable(),
                 TextColumn::make('min_points_required')
                     ->label('Min Points Req.')
                     ->numeric()

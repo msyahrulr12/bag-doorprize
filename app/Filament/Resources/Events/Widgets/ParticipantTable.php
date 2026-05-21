@@ -31,8 +31,13 @@ class ParticipantTable extends TableWidget
             ->deferLoading()
             ->query(function () {
                 $query = Participant::query()
-                    ->with(['account.customer'])
-                    ->withCount('lotteryTickets')
+                    ->with(['account.customer', 'account.branch'])
+                    ->withCount(['lotteryTickets' => function ($query) {
+                        $query->where('status', LotteryTicket::STATUS_ACTIVE);
+                    }])
+                    ->whereHas('lotteryTickets', function ($query) {
+                        $query->where('status', LotteryTicket::STATUS_ACTIVE);
+                    })
                     ->withSum([
                         'lotteryTickets as active_points' => function ($query) {
                             $query->where('status', LotteryTicket::STATUS_ACTIVE);
@@ -59,11 +64,11 @@ class ParticipantTable extends TableWidget
                 }
 
                 // Filter by user branches
-                if (!auth()->user()->hasRole('super_admin')) {
-                    $query->whereHas('account', function ($q) {
-                        $q->whereIn('branch_id', auth()->user()->branches->pluck('id'));
-                    });
-                }
+                // if (!auth()->user()->hasRole('super_admin')) {
+                //     $query->whereHas('account', function ($q) {
+                //         $q->whereIn('branch_id', auth()->user()->branches->pluck('id'));
+                //     });
+                // }
 
                 return $query;
             })
@@ -82,6 +87,10 @@ class ParticipantTable extends TableWidget
                 TextColumn::make('account.account_number')
                     ->label('Account Number')
                     ->searchable(['participant_account_number'])
+                    ->sortable(),
+                TextColumn::make('account.branch.branch_name')
+                    ->label('Branch Name')
+                    ->searchable()
                     ->sortable(),
                 TextColumn::make('participant_name')
                     ->label('Participant Name (Snapshot)')
@@ -162,7 +171,7 @@ class ParticipantTable extends TableWidget
                                 ->weight(FontWeight::Bold)
                                 ->color('info'),
                             RepeatableEntry::make('lotteryTickets')
-                                ->state(fn(Participant $record) => $record->lotteryTickets()->get())
+                                ->state(fn(Participant $record) => $record->lotteryTickets()->where('status', LotteryTicket::STATUS_ACTIVE)->get())
                                 ->label('Active Tickets')
                                 ->schema([
                                     TextEntry::make('id')

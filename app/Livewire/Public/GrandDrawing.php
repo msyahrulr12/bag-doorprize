@@ -463,23 +463,31 @@ class GrandDrawing extends Component
     {
         $query = LotteryTicket::query()
             ->where('event_id', $eventId)
-            ->where('total_points', '>=', $this->eventPrize->min_points_required)
             ->where('status', LotteryTicket::STATUS_ACTIVE)
+            ->whereIn('participant_id', function ($q) use ($eventId) {
+                $q->select('participant_id')
+                  ->from('lottery_tickets')
+                  ->where('event_id', $eventId)
+                  ->where('status', LotteryTicket::STATUS_ACTIVE)
+                  ->whereNull('deleted_at')
+                  ->groupBy('participant_id')
+                  ->havingRaw('SUM(total_points) >= ?', [$this->eventPrize->min_points_required]);
+            })
             ->whereHas('participant.account.customer', function ($q) use ($eventId, $excludeCustomerIds) {
-                $q->whereDoesntHave('accounts.participants.winners', function ($wq) use ($eventId) {
-                    $wq->whereHas('eventPrize', fn($eq) => $eq->where('event_prizes.event_id', $eventId));
+                $q->whereDoesntHave('accounts.participants.winners', function ($wq) {
+                    $wq->where('draw_session_id', $this->drawSessionId);
                 });
 
                 // Also exclude staged (temporary) winners to avoid duplicates in current session
-                $q->whereDoesntHave('accounts.participants.temporaryWinners', function ($twq) use ($eventId) {
-                    $twq->where('event_prize_id', $eventId);
+                $q->whereDoesntHave('accounts.participants.temporaryWinners', function ($twq) {
+                    $twq->where('draw_session_id', $this->drawSessionId);
                 });
 
                 if (!empty($excludeCustomerIds)) {
                     $q->whereNotIn('customers.id', $excludeCustomerIds);
                 }
 
-                $pendingBatchCustomerIds = BulkDrawBatch::whereHas('eventPrize', fn($ep) => $ep->where('event_id', $eventId))
+                $pendingBatchCustomerIds = BulkDrawBatch::where('draw_session_id', $this->drawSessionId)
                     ->whereIn('status', ['PENDING', 'PROCESSING', 'COMPLETED'])
                     ->get()
                     ->pluck('results')

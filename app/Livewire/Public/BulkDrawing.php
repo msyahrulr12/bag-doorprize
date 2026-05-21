@@ -260,7 +260,16 @@ class BulkDrawing extends Component
             if ($batch->status === 'COMPLETED' && empty($this->candidates)) {
                 $candidateTickets = LotteryTicket::query()
                     ->where('event_id', $this->eventPrize->event_id)
-                    ->where('total_points', '>=', $this->eventPrize->min_points_required)
+                    ->where('status', LotteryTicket::STATUS_ACTIVE)
+                    ->whereIn('participant_id', function ($q) {
+                        $q->select('participant_id')
+                          ->from('lottery_tickets')
+                          ->where('event_id', $this->eventPrize->event_id)
+                          ->where('status', LotteryTicket::STATUS_ACTIVE)
+                          ->whereNull('deleted_at')
+                          ->groupBy('participant_id')
+                          ->havingRaw('SUM(total_points) >= ?', [$this->eventPrize->min_points_required]);
+                    })
                     ->where('status', LotteryTicket::STATUS_ACTIVE)
                     ->inRandomOrder()
                     ->limit(20)

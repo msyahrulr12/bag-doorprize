@@ -50,54 +50,62 @@ class ProcessBulkDrawJob implements ShouldQueue
 
             // 2. Fetch ALL eligible tickets ONCE to save memory/time
             Log::info("BulkDraw - Fetching eligible tickets for event: {$eventId}");
-            $tickets = \DB::table('lottery_tickets')
-                ->join('participants', 'participants.id', '=', 'lottery_tickets.participant_id')
-                ->join('accounts', 'accounts.id', '=', 'participants.account_id')
-                ->join('branches', 'branches.id', '=', 'accounts.branch_id')
-                ->join('customers', 'customers.id', '=', 'accounts.customer_id')
-                ->select([
-                    'lottery_tickets.id',
-                    'lottery_tickets.total_points',
-                    'lottery_tickets.range_start',
-                    'lottery_tickets.range_end',
-                    'lottery_tickets.participant_id',
-                    'accounts.customer_id as customer_id',
-                    'customers.cif',
-                    'branches.id as branch_id',
-                    'branches.region',
-                    'branches.branch_code',
-                    'branches.branch_name',
-                    'branches.company_book as branch_company_book',
-                    'participants.participant_name',
-                    'participants.participant_email',
-                    'participants.participant_phone_number',
-                    'accounts.account_number',
-                    'accounts.status as account_status',
-                ])
-                ->where('lottery_tickets.event_id', $eventId)
-                ->where('lottery_tickets.status', LotteryTicket::STATUS_ACTIVE)
-                ->where('lottery_tickets.total_points', '>=', $eventPrize->min_points_required)
-                ->whereNull('lottery_tickets.deleted_at')
-                ->whereNull('participants.deleted_at')
-                ->whereNotExists(function ($query) use ($eventId) {
-                    $query->select(\DB::raw(1))
-                        ->from('winners')
-                        ->join('event_prizes', 'event_prizes.id', '=', 'winners.event_prize_id')
-                        ->join('participants as p_check', 'p_check.id', '=', 'winners.participant_id')
-                        ->join('accounts as a_check', 'a_check.id', '=', 'p_check.account_id')
-                        ->whereColumn('a_check.customer_id', 'customers.id')
-                        ->where('event_prizes.event_id', $eventId)
-                        ->whereNull('winners.deleted_at');
-                })
-                ->whereNotExists(function ($query) use ($eventId) {
-                    $query->select(\DB::raw(1))
-                        ->from('temporary_winners')
-                        ->join('event_prizes as ep_check', 'ep_check.id', '=', 'temporary_winners.event_prize_id')
-                        ->whereColumn('temporary_winners.participant_cif', 'customers.cif')
-                        ->where('ep_check.event_id', $eventId)
-                        ->whereNull('temporary_winners.deleted_at');
-                })
-                ->get();
+                $drawSessionId = $batch->draw_session_id;
+
+                $tickets = \DB::table('lottery_tickets')
+                    ->join('participants', 'participants.id', '=', 'lottery_tickets.participant_id')
+                    ->join('accounts', 'accounts.id', '=', 'participants.account_id')
+                    ->join('branches', 'branches.id', '=', 'accounts.branch_id')
+                    ->join('customers', 'customers.id', '=', 'accounts.customer_id')
+                    ->select([
+                        'lottery_tickets.id',
+                        'lottery_tickets.total_points',
+                        'lottery_tickets.range_start',
+                        'lottery_tickets.range_end',
+                        'lottery_tickets.participant_id',
+                        'accounts.customer_id as customer_id',
+                        'customers.cif',
+                        'branches.id as branch_id',
+                        'branches.region',
+                        'branches.branch_code',
+                        'branches.branch_name',
+                        'branches.company_book as branch_company_book',
+                        'participants.participant_name',
+                        'participants.participant_email',
+                        'participants.participant_phone_number',
+                        'accounts.account_number',
+                        'accounts.status as account_status',
+                    ])
+                    ->where('lottery_tickets.event_id', $eventId)
+                    ->where('lottery_tickets.status', LotteryTicket::STATUS_ACTIVE)
+                    ->whereIn('lottery_tickets.participant_id', function ($q) use ($eventId, $eventPrize) {
+                        $q->select('participant_id')
+                            ->from('lottery_tickets')
+                            ->where('event_id', $eventId)
+                            ->where('status', LotteryTicket::STATUS_ACTIVE)
+                            ->whereNull('deleted_at')
+                            ->groupBy('participant_id')
+                            ->havingRaw('SUM(total_points) >= ?', [$eventPrize->min_points_required]);
+                    })
+                    ->whereNull('lottery_tickets.deleted_at')
+                    ->whereNull('participants.deleted_at')
+                    ->whereNotExists(function ($query) use ($drawSessionId) {
+                        $query->select(\DB::raw(1))
+                            ->from('winners')
+                            ->join('participants as p_check', 'p_check.id', '=', 'winners.participant_id')
+                            ->join('accounts as a_check', 'a_check.id', '=', 'p_check.account_id')
+                            ->whereColumn('a_check.customer_id', 'customers.id')
+                            ->where('winners.draw_session_id', $drawSessionId)
+                            ->whereNull('winners.deleted_at');
+                    })
+                    ->whereNotExists(function ($query) use ($drawSessionId) {
+                        $query->select(\DB::raw(1))
+                            ->from('temporary_winners')
+                            ->whereColumn('temporary_winners.participant_cif', 'customers.cif')
+                            ->where('temporary_winners.draw_session_id', $drawSessionId)
+                            ->whereNull('temporary_winners.deleted_at');
+                    })
+                    ->get();
 
             Log::info("BulkDraw - Found " . $tickets->count() . " eligible tickets.");
 
