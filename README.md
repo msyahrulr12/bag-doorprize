@@ -113,6 +113,19 @@ Aplikasi ini menggunakan environment yang dioptimalkan. Jalankan ketiga perintah
 3. Frontend Assets (Vite):
     ```Bash
     npm run dev
+
+## 📅 Scheduled Tasks
+
+The application includes several scheduled Artisan commands configured via cron expressions. They are defined in `routes/console.php` and can be customized through environment variables.
+
+- **Ticket Status Maintenance** – Runs every month on the 4th at 04:00 AM to update lottery ticket statuses based on growth.
+
+    ```bash
+    php artisan schedule:list
+    ```
+
+    The schedule is driven by the `SCHEDULER_UPDATE_TICKETS_STATUS` variable (default `0 4 4 * *`).
+
     ```
 
 ## Panduan Deployment Menggunakan Makefile

@@ -25,3 +25,7 @@ Schedule::command('app:generate-bank-statement-pdf-command')->cron(env('SCHEDULE
 
 // Status Maintenance
 Schedule::command('app:update-session-event-status')->hourly();
+
+// Ticket Status Maintenance (Runs every month on the 4th at 4:00 AM)
+Schedule::command('app:update-tickets-status')->cron(env('SCHEDULER_UPDATE_TICKETS_STATUS', '0 4 4 * *'));
+
