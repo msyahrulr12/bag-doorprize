@@ -157,8 +157,10 @@ class PdfBankStatement extends Widget implements HasForms
         $totalPengurangan = 0;
 
         $coupons = $tickets->map(function ($ticket) use (&$totalPenambahan, &$totalPengurangan) {
+            $winsCount = \DB::table('winners')->where('lottery_ticket_id', $ticket->id)->count();
+
             if ($ticket->status == LotteryTicket::STATUS_ACTIVE) {
-                $penambahan = $ticket->total_points;
+                $penambahan = $ticket->total_points - $winsCount;
                 $pengurangan = 0;
             } else if ($ticket->status == LotteryTicket::STATUS_COMPLETED) {
                 $penambahan = 0;
@@ -171,7 +173,12 @@ class PdfBankStatement extends Widget implements HasForms
             $totalPenambahan += $penambahan;
             $totalPengurangan += $pengurangan;
 
-            $saldo = $ticket->total_points - $pengurangan;
+            $saldo = $penambahan - $pengurangan;
+
+            $desc = $ticket->description ?? "PENAMBAHAN {$ticket->total_points} KUPON";
+            if ($winsCount > 0) {
+                $desc .= " (DIPOTONG {$winsCount} KUPON MENANG PRIZE)";
+            }
 
             return [
                 'periode' => DateHelper::MONTHS[$ticket->month],
@@ -179,7 +186,7 @@ class PdfBankStatement extends Widget implements HasForms
                 'pengurangan' => number_format($pengurangan, 0, ',', '.'),
                 'nomor' => "{$ticket->range_start} - {$ticket->range_end}",
                 'saldo' => $saldo,
-                'keterangan' => $ticket->description ?? "PENAMBAHAN {$ticket->total_points} KUPON",
+                'keterangan' => $desc,
             ];
         })->toArray();
 

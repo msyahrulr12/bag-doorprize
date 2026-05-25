@@ -106,8 +106,14 @@ class GenerateBankStatementJob implements ShouldQueue
                 $penambahan = 0;
                 $pengurangan = 0;
 
+                $ticket = $ticketsByPeriod["{$history->year}_{$history->month}"] ?? null;
+                $winsCount = 0;
+                if ($ticket) {
+                    $winsCount = \DB::table('winners')->where('lottery_ticket_id', $ticket->id)->count();
+                }
+
                 if ($history->type == PointHistory::POINT_TYPE_EARN) {
-                    $penambahan = (int) $history->points;
+                    $penambahan = (int) $history->points - $winsCount;
                     $totalPointCustomers[$accNo]['penambahan'] += $penambahan;
                 } else if ($history->type == PointHistory::POINT_TYPE_EXPIRED) {
                     $pengurangan = (int) abs($history->points);
@@ -115,7 +121,7 @@ class GenerateBankStatementJob implements ShouldQueue
                 } else {
                     $val = (int) $history->points;
                     if ($val > 0) {
-                        $penambahan = $val;
+                        $penambahan = $val - $winsCount;
                         $totalPointCustomers[$accNo]['penambahan'] += $penambahan;
                     } else {
                         $pengurangan = abs($val);
@@ -126,7 +132,6 @@ class GenerateBankStatementJob implements ShouldQueue
                 $tempAggregated[$monthSortKey]['penambahan'] += $penambahan;
                 $tempAggregated[$monthSortKey]['pengurangan'] += $pengurangan;
 
-                $ticket = $ticketsByPeriod["{$history->year}_{$history->month}"] ?? null;
                 if ($ticket && $ticket->range_start && $ticket->range_end) {
                     $rangeDesc = "{$ticket->range_start} s/d {$ticket->range_end}";
                     if (!in_array($rangeDesc, $tempAggregated[$monthSortKey]['nomor'])) {
@@ -134,7 +139,11 @@ class GenerateBankStatementJob implements ShouldQueue
                     }
                 }
 
-                $tempAggregated[$monthSortKey]['keterangan'][] = $history->description ?? "{$history->type} {$history->points} KUPON";
+                $desc = $history->description ?? "{$history->type} {$history->points} KUPON";
+                if ($winsCount > 0) {
+                    $desc .= " (DIPOTONG {$winsCount} KUPON MENANG PRIZE)";
+                }
+                $tempAggregated[$monthSortKey]['keterangan'][] = $desc;
             }
         }
 
