@@ -19,6 +19,7 @@ class EventPrize extends Model implements Auditable
         'remaining_quantity',
         'min_points_required',
         'split_draw',
+        'draw_session_id',
     ];
 
     public function event()
@@ -29,6 +30,11 @@ class EventPrize extends Model implements Auditable
     public function prize()
     {
         return $this->belongsTo(Prize::class);
+    }
+
+    public function drawSession()
+    {
+        return $this->belongsTo(DrawSession::class);
     }
 
     protected static function booted()

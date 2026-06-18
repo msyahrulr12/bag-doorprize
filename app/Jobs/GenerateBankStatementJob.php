@@ -56,6 +56,8 @@ class GenerateBankStatementJob implements ShouldQueue
             'accounts.branch',
             'accounts.participants',
             'accounts.participants.lotteryTickets',
+            'accounts.pointHistories',
+
             'accounts.pointHistories' => function ($query) use ($baseComparisonYear, $baseComparisonMonth) {
                 // FILTER: Only same year as requested and exclude base comparison period
                 $query->where('year', $this->year)
@@ -107,13 +109,9 @@ class GenerateBankStatementJob implements ShouldQueue
                 $pengurangan = 0;
 
                 $ticket = $ticketsByPeriod["{$history->year}_{$history->month}"] ?? null;
-                $winsCount = 0;
-                if ($ticket) {
-                    $winsCount = \DB::table('winners')->where('lottery_ticket_id', $ticket->id)->count();
-                }
 
                 if ($history->type == PointHistory::POINT_TYPE_EARN) {
-                    $penambahan = (int) $history->points - $winsCount;
+                    $penambahan = (int) $history->points;
                     $totalPointCustomers[$accNo]['penambahan'] += $penambahan;
                 } else if ($history->type == PointHistory::POINT_TYPE_EXPIRED) {
                     $pengurangan = (int) abs($history->points);
@@ -121,7 +119,7 @@ class GenerateBankStatementJob implements ShouldQueue
                 } else {
                     $val = (int) $history->points;
                     if ($val > 0) {
-                        $penambahan = $val - $winsCount;
+                        $penambahan = $val;
                         $totalPointCustomers[$accNo]['penambahan'] += $penambahan;
                     } else {
                         $pengurangan = abs($val);
@@ -140,17 +138,75 @@ class GenerateBankStatementJob implements ShouldQueue
                 }
 
                 $desc = $history->description ?? "{$history->type} {$history->points} KUPON";
-                if ($winsCount > 0) {
-                    $desc .= " (DIPOTONG {$winsCount} KUPON MENANG PRIZE)";
-                }
                 $tempAggregated[$monthSortKey]['keterangan'][] = $desc;
+            }
+
+            // Process winners for all tickets of the account
+            foreach ($ticketsByPeriod as $periodKey => $ticket) {
+                $winners = \DB::table('winners')
+                    ->leftJoin('draw_sessions', 'winners.draw_session_id', '=', 'draw_sessions.id')
+                    ->where('lottery_ticket_id', $ticket->id)
+                    ->whereNull('winners.deleted_at')
+                    ->get(['winners.drawn_at', 'winners.winning_number', 'draw_sessions.name as draw_session_name']);
+
+                $winsCount = count($winners);
+                if ($winsCount > 0) {
+                    $totalPointCustomers[$accNo]['pengurangan'] += $winsCount;
+
+                    $winnersByDrawnMonth = [];
+                    foreach ($winners as $winner) {
+                        $drawnAt = $winner->drawn_at ?? sprintf("%04d-%02d-01", $ticket->year, $ticket->month);
+                        $drawnDate = Carbon::parse($drawnAt);
+                        $key = sprintf("%04d_%02d_undian", $drawnDate->year, $drawnDate->month);
+
+                        if (!isset($winnersByDrawnMonth[$key])) {
+                            $winnersByDrawnMonth[$key] = [
+                                'count' => 0,
+                                'draw_session_name' => $winner->draw_session_name,
+                                'winning_numbers' => [],
+                            ];
+                        }
+                        $winnersByDrawnMonth[$key]['count']++;
+                        if ($winner->winning_number) {
+                            $winnersByDrawnMonth[$key]['winning_numbers'][] = "<b>{$winner->winning_number}</b>";
+                        }
+                    }
+
+                    foreach ($winnersByDrawnMonth as $drawnSortKey => $drawnData) {
+                        $drawnWinsCount = $drawnData['count'];
+                        if ($drawnWinsCount > 0) {
+                            $drawnParts = explode('_', $drawnSortKey);
+                            $drawnYear = (int)$drawnParts[0];
+                            $drawnMonth = (int)$drawnParts[1];
+
+                            if (!isset($tempAggregated[$drawnSortKey])) {
+                                $tempAggregated[$drawnSortKey] = [
+                                    'month' => "Undian BAGI HOKI <br>" . ($drawnData['draw_session_name'] ?? ''),
+                                    'penambahan' => 0,
+                                    'pengurangan' => 0,
+                                    'nomor' => [],
+                                    'keterangan' => [],
+                                ];
+                            }
+
+                            foreach ($drawnData['winning_numbers'] as $winNo) {
+                                if (!in_array($winNo, $tempAggregated[$drawnSortKey]['nomor'])) {
+                                    $tempAggregated[$drawnSortKey]['nomor'][] = $winNo;
+                                }
+                            }
+
+                            $tempAggregated[$drawnSortKey]['pengurangan'] += $drawnWinsCount;
+                            $tempAggregated[$drawnSortKey]['keterangan'][] = "<b>DIPOTONG {$drawnWinsCount} KUPON MENANG UNDIAN</b>";
+                        }
+                    }
+                }
             }
         }
 
         ksort($tempAggregated);
         $allCoupons = [];
         foreach ($tempAggregated as $item) {
-            $monthLabel = DateHelper::MONTHS[$item['month']] ?? 'N/A';
+            $monthLabel = DateHelper::MONTHS[$item['month']] ?? $item['month'];
 
             $rowNet = ($item['penambahan'] - $item['pengurangan']);
             $allCoupons[] = [
@@ -191,9 +247,11 @@ class GenerateBankStatementJob implements ShouldQueue
             if ($limitAccountNumbers && !in_array($account->account_number, $limitAccountNumbers)) {
                 continue;
             }
-            $existingDoc = $account->documents
-                ->where('document_type', AccountDocument::TYPE_ESTATEMENT)
-                ->first();
+            $existingDoc = $account->documents->first(function ($doc) {
+                return $doc->document_type === AccountDocument::TYPE_ESTATEMENT &&
+                    $doc->period &&
+                    Carbon::parse($doc->period)->format('Y-m') === $this->currentDate->format('Y-m');
+            });
 
             if (
                 $existingDoc && $existingDoc->has_stored_to_sftp &&
@@ -253,7 +311,12 @@ class GenerateBankStatementJob implements ShouldQueue
             ];
 
             AccountDocument::updateOrCreate(
-                ['customer_id' => $customer->id, 'account_id' => $account->id, 'document_type' => AccountDocument::TYPE_ESTATEMENT],
+                [
+                    'customer_id' => $customer->id,
+                    'account_id' => $account->id,
+                    'document_type' => AccountDocument::TYPE_ESTATEMENT,
+                    'period' => $this->currentDate->format('Y-m-d'),
+                ],
                 $docData
             );
 
@@ -273,6 +336,7 @@ class GenerateBankStatementJob implements ShouldQueue
                     AccountDocument::where('customer_id', $customer->id)
                         ->where('account_id', $account->id)
                         ->where('document_type', AccountDocument::TYPE_ESTATEMENT)
+                        ->where('period', $this->currentDate->format('Y-m-d'))
                         ->update([
                             'has_stored_to_sftp' => true,
                             'file_name_t24' => $filenameSFTP[count($filenameSFTP) - 1],

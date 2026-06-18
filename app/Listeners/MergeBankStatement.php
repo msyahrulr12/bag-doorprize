@@ -101,6 +101,7 @@ class MergeBankStatement
                 $q->where('account_number', $event->accountNumber);
             })
                 ->where('document_type', \App\Models\AccountDocument::TYPE_ESTATEMENT)
+                ->where('period', \Carbon\Carbon::create($event->year, $event->month, 1)->format('Y-m-d'))
                 ->update(['has_stored_to_sftp' => true]);
 
             // Remove local generated file as per requirement

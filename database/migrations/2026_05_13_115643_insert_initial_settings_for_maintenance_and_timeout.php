@@ -12,7 +12,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        DB::table('settings')->insert([
+        DB::table('settings')->insertOrIgnore([
             [
                 'group' => 'general',
                 'key' => 'filament_idle_warning_timeout',

@@ -85,7 +85,7 @@ class LotteryTicketTable extends TableWidget
                         }
                         $records = $query->get();
                         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.lottery-tickets', ['records' => $records]);
-                        return response()->streamDownload(fn() => print ($pdf->output()), 'lottery-tickets.pdf');
+                        return response()->streamDownload(fn() => print($pdf->output()), 'lottery-tickets.pdf');
                     }),
             ])
             ->recordActions([

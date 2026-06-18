@@ -15,6 +15,8 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Pages\ViewRecord;
 use App\Filament\Resources\Events\EventResource;
+use App\Filament\Resources\Events\Widgets\TicketVerificationWidget;
+use App\Filament\Resources\Events\Widgets\EligibleTicketWidget;
 use Filament\Schemas\Components\Livewire;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
@@ -41,8 +43,8 @@ class ViewEvent extends ViewRecord
                         Tab::make('Detail')
                             ->schema([
                                 $this->hasInfolist() // This method returns `true` if the page has an infolist defined
-                                ? $this->getInfolistContentComponent() // This method returns a component to display the infolist that is defined in this resource
-                                : $this->getFormContentComponent(), // This method returns a component to display the form that is defined in this resource
+                                    ? $this->getInfolistContentComponent() // This method returns a component to display the infolist that is defined in this resource
+                                    : $this->getFormContentComponent(), // This method returns a component to display the form that is defined in this resource
                                 $this->getRelationManagersContentComponent()
                             ]),
                         Tab::make('Draw Session')
@@ -63,12 +65,18 @@ class ViewEvent extends ViewRecord
                                     'record' => $this->getRecord(),
                                 ]),
                             ]),
-                        // Tab::make('Lottery Ticket')
-                        //     ->schema([
-                        //         Livewire::make(LotteryTicketTable::class, [
-                        //             'record' => $this->getRecord(),
-                        //         ]),
-                        //     ])
+                        Tab::make('Ticket Verification')
+                            ->schema([
+                                Livewire::make(TicketVerificationWidget::class, [
+                                    'record' => $this->getRecord(),
+                                ]),
+                            ]),
+                        Tab::make('Eligible Ticket')
+                            ->schema([
+                                Livewire::make(EligibleTicketWidget::class, [
+                                    'record' => $this->getRecord(),
+                                ]),
+                            ])
                     ]),
             ]);
     }

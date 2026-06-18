@@ -60,7 +60,7 @@ class BulkDrawing extends Component
         $stagedCount = TemporaryWinner::where('event_prize_id', $this->eventPrize->id)
             ->where('draw_session_id', $this->drawSessionId)
             ->count();
-        
+
         return max(0, $this->eventPrize->remaining_quantity - $stagedCount);
     }
 
@@ -74,14 +74,7 @@ class BulkDrawing extends Component
     {
         $this->uuid = $uuid;
         $this->eventPrize = EventPrize::with(['event', 'prize'])->where('uuid', $uuid)->firstOrFail();
-
-        // Auto-select active session if exists
-        $this->drawSessionId = DrawSession::where('event_id', $this->eventPrize->event_id)
-            ->where('status', DrawSession::STATUS_ACTIVE)
-            ->where('started_at', '<=', now())
-            ->where('ended_at', '>=', now())
-            ->first()?->id;
-
+        $this->drawSessionId = $this->eventPrize->draw_session_id;
         $this->enableRedraw = (bool) Setting::where('key', 'activate_re_draw_and_confirm')->first()->value ?? true;
 
         $this->updateTotalDataToProcess();
@@ -93,7 +86,7 @@ class BulkDrawing extends Component
         $this->eventPrize->refresh();
         $this->totalDataToProcess = $this->eventPrize?->remaining_quantity && $this->eventPrize?->remaining_quantity < $this->eventPrize?->split_draw ? $this->eventPrize?->remaining_quantity : $this->eventPrize?->split_draw;
 
-        $randomParticipants = $this->eventPrize->event->randomParticipants->map(function($p) {
+        $randomParticipants = $this->eventPrize->event->randomParticipants->map(function ($p) {
             return [
                 'id' => $p->id,
                 'participant_name' => $p->participant_name,
@@ -122,7 +115,7 @@ class BulkDrawing extends Component
             return false;
         }
         $this->isPreview = false;
-        
+
         if ($this->drawSessionId) {
             // Always check if there are temporary winners first
             $tempWinners = TemporaryWinner::where('draw_session_id', $this->drawSessionId)
@@ -133,7 +126,7 @@ class BulkDrawing extends Component
                 $this->pendingWinners = $tempWinners->map(fn($tw) => $tw->getData())->toArray();
                 $this->isPreview = true;
                 $this->totalWinners = count($this->pendingWinners);
-                
+
                 // For batch view, show new winners split into 3 columns
                 $this->winners = collect($this->pendingWinners)->split(3)->toArray();
             }
@@ -190,7 +183,7 @@ class BulkDrawing extends Component
             $this->dispatch('error', message: 'Please select an active draw session.');
             return;
         }
-        
+
         // If there are already temporary winners and redraw is allowed, we should reset first or redraw
         // For simplicity, we auto-delete temporary winners for this prize session if starting a new draw
         // TemporaryWinner::where('draw_session_id', $this->drawSessionId)
@@ -263,12 +256,12 @@ class BulkDrawing extends Component
                     ->where('status', LotteryTicket::STATUS_ACTIVE)
                     ->whereIn('participant_id', function ($q) {
                         $q->select('participant_id')
-                          ->from('lottery_tickets')
-                          ->where('event_id', $this->eventPrize->event_id)
-                          ->where('status', LotteryTicket::STATUS_ACTIVE)
-                          ->whereNull('deleted_at')
-                          ->groupBy('participant_id')
-                          ->havingRaw('SUM(total_points) >= ?', [$this->eventPrize->min_points_required]);
+                            ->from('lottery_tickets')
+                            ->where('event_id', $this->eventPrize->event_id)
+                            ->where('status', LotteryTicket::STATUS_ACTIVE)
+                            ->whereNull('deleted_at')
+                            ->groupBy('participant_id')
+                            ->havingRaw('SUM(total_points) >= ?', [$this->eventPrize->min_points_required]);
                     })
                     ->where('status', LotteryTicket::STATUS_ACTIVE)
                     ->inRandomOrder()
@@ -312,11 +305,11 @@ class BulkDrawing extends Component
     {
         $batch = BulkDrawBatch::find($this->batchId);
 
-        $this->batchId = null; 
+        $this->batchId = null;
         $this->isStopping = false;
         $this->isDrawing = false;
         $this->isReadyToReveal = false;
-        
+
         $this->checkWinner();
     }
 
@@ -354,12 +347,12 @@ class BulkDrawing extends Component
             foreach ($tempWinners as $tw) {
                 $this->eventPrize->refresh();
                 if ($this->eventPrize->remaining_quantity <= 0) {
-                     throw new \Exception("Prize quantity exhausted.");
+                    throw new \Exception("Prize quantity exhausted.");
                 }
 
                 $wData = $tw->toArray();
                 unset($wData['id'], $wData['created_at'], $wData['updated_at'], $wData['deleted_at']);
-                
+
                 $fullData = array_merge($wData, [
                     'prize_name' => $this->eventPrize->prize->prize_name,
                     'prize_tier' => Prize::PRIZE_TIER[$this->eventPrize->prize->tier] ?? 'Common',

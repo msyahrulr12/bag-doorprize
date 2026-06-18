@@ -43,7 +43,7 @@ class DrawSessionTable extends TableWidget
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
                         'ACTIVE' => 'success',
-                        'NONACTIVE' => 'danger',
+                        'INACTIVE' => 'danger',
                         default => 'gray',
                     })
                     ->searchable(),
@@ -55,7 +55,7 @@ class DrawSessionTable extends TableWidget
                     ->sortable(),
                 TextColumn::make('winners_count')
                     ->label('Total Winners')
-                    ->getStateUsing(fn (DrawSession $record): int => $record->winners_count + $record->temporary_winners_count)
+                    ->getStateUsing(fn(DrawSession $record): int => $record->winners_count + $record->temporary_winners_count)
                     ->numeric()
                     ->sortable(),
                 TextColumn::make('created_at')
@@ -80,7 +80,7 @@ class DrawSessionTable extends TableWidget
                         }
                         $records = $query->get();
                         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.draw-sessions', ['records' => $records]);
-                        return response()->streamDownload(fn() => print ($pdf->output()), 'draw-sessions.pdf');
+                        return response()->streamDownload(fn() => print($pdf->output()), 'draw-sessions.pdf');
                     }),
                 CreateAction::make()
                     ->form([
@@ -90,10 +90,7 @@ class DrawSessionTable extends TableWidget
                             ->required()
                             ->maxLength(255),
                         Select::make('status')
-                            ->options([
-                                'ACTIVE' => 'Active',
-                                'NONACTIVE' => 'Nonactive',
-                            ])
+                            ->options(fn() => DrawSession::DRAW_SESSION_STATUS)
                             ->default('ACTIVE')
                             ->required(),
                         DateTimePicker::make('started_at')
@@ -110,10 +107,7 @@ class DrawSessionTable extends TableWidget
                             ->required()
                             ->maxLength(255),
                         Select::make('status')
-                            ->options([
-                                'ACTIVE' => 'Active',
-                                'NONACTIVE' => 'Nonactive',
-                            ])
+                            ->options(fn() => DrawSession::DRAW_SESSION_STATUS)
                             ->required(),
                         DateTimePicker::make('started_at'),
                         DateTimePicker::make('ended_at'),

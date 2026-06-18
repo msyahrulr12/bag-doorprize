@@ -157,6 +157,7 @@ class BankStatementService
         $existingDoc = AccountDocument::where('customer_id', $customer->id)
             ->where('account_id', $account->id)
             ->where('document_type', AccountDocument::TYPE_ESTATEMENT)
+            ->where('period', $currentDate->format('Y-m-d'))
             ->first();
 
         if ($existingDoc) {

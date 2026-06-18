@@ -190,7 +190,8 @@ class ParticipantTable extends TableWidget
                                     TextEntry::make('total_points')
                                         ->label('Points')
                                         ->numeric()
-                                        ->inlineLabel(),
+                                        ->inlineLabel()
+                                        ->formatStateUsing(fn($state, $record) => $state - (\DB::table('winners')->where('lottery_ticket_id', $record->id)->count())),
                                     TextEntry::make('range_start')
                                         ->label('Start')
                                         ->inlineLabel()

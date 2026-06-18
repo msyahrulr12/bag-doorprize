@@ -304,7 +304,7 @@
                     @foreach($coupons ?? [] as $index => $coupon)
                         <tr>
                             <td>{{ $index + 1 }}</td>
-                            <td>{{ $coupon['periode'] }}</td>
+                            <td>{!! $coupon['periode'] !!}</td>
                             <td>{{ $coupon['penambahan'] }}</td>
                             <td>{{ $coupon['pengurangan'] }}</td>
                             <td>{!! $coupon['nomor'] !!}</td>

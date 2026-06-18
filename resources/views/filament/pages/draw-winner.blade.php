@@ -98,31 +98,31 @@
 
     @if($isDrawing)
         <div wire:ignore wire:key="admin-draw-{{ now()->timestamp }}" x-data="{
-                                                                                                                         digits: '00000000',
-                                                                                                                         target: '{{ $pendingWinner['lucky_number'] }}',
-                                                                                                                         placeholderName: 'SEARCHING...',
-                                                                                                                         placeholderBranch: 'RANDOMIZING...',
-                                                                                                                         isStopping: false,
-                                                                                                                         init() {
-                                                                                                                             let interval = setInterval(() => {
-                                                                                                                                 if (this.isStopping) return;
-                                                                                                                                 this.digits = Math.floor(Math.random() * 99999999).toString().padStart(8, '0');
+            digits: '00000000',
+            target: '{{ $pendingWinner['lucky_number'] }}',
+            placeholderName: 'SEARCHING...',
+            placeholderBranch: 'RANDOMIZING...',
+            isStopping: false,
+            init() {
+                let interval = setInterval(() => {
+                    if (this.isStopping) return;
+                    this.digits = Math.floor(Math.random() * 99999999).toString().padStart(8, '0');
 
-                                                                                                                                 const names = ['Wibowo', 'Sari', 'Pratama', 'Lestari', 'Budi', 'Putri', 'Hidayat', 'Santoso', 'Kurniawan', 'Mulyani', 'Setiawan', 'Ramadhan', 'Wijaya', 'Utami'];
-                                                                                                                                 const branches = ['JAKARTA', 'SURABAYA', 'BANDUNG', 'MEDAN', 'MAKASSAR', 'SEMARANG', 'PALEMBANG', 'MALANG', 'BEKASI', 'TANGERANG'];
-                                                                                                                                 this.placeholderName = names[Math.floor(Math.random() * names.length)] + ' *** ' + names[Math.floor(Math.random() * names.length)];
-                                                                                                                                 this.placeholderBranch = branches[Math.floor(Math.random() * branches.length)];
-                                                                                                                             }, 50);
-                                                                                                                         },
-                                                                                                                         stop() {
-                                                                                                                             let self = this;
-                                                                                                                             self.isStopping = true;
-                                                                                                                             self.digits = self.target;
-                                                                                                                             setTimeout(() => {
-                                                                                                                                 $wire.finishDrawing();
-                                                                                                                             }, 1500); 
-                                                                                                                         }
-                                                                                                                     }"
+                    const names = ['Wibowo', 'Sari', 'Pratama', 'Lestari', 'Budi', 'Putri', 'Hidayat', 'Santoso', 'Kurniawan', 'Mulyani', 'Setiawan', 'Ramadhan', 'Wijaya', 'Utami'];
+                    const branches = ['JAKARTA', 'SURABAYA', 'BANDUNG', 'MEDAN', 'MAKASSAR', 'SEMARANG', 'PALEMBANG', 'MALANG', 'BEKASI', 'TANGERANG'];
+                    this.placeholderName = names[Math.floor(Math.random() * names.length)] + ' *** ' + names[Math.floor(Math.random() * names.length)];
+                    this.placeholderBranch = branches[Math.floor(Math.random() * branches.length)];
+                }, 50);
+            },
+            stop() {
+                let self = this;
+                self.isStopping = true;
+                self.digits = self.target;
+                setTimeout(() => {
+                    $wire.finishDrawing();
+                }, 1500); 
+            }
+        }"
             class="mt-12 bg-gray-950 rounded-[3rem] shadow-2xl p-12 text-center relative overflow-hidden border border-white/10">
 
             <!-- Abstract Background -->

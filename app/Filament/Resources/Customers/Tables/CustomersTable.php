@@ -27,6 +27,11 @@ class CustomersTable
                     ->searchable(),
                 TextColumn::make('cif')
                     ->searchable(),
+                TextColumn::make('accounts.account_number')
+                    ->label('Account Number')
+                    ->badge()
+                    ->separator(', ')
+                    ->searchable(),
                 TextColumn::make('email')
                     ->label('Email address')
                     ->searchable(),

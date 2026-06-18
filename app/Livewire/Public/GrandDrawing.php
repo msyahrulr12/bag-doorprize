@@ -59,7 +59,7 @@ class GrandDrawing extends Component
         $stagedCount = TemporaryWinner::where('event_prize_id', $this->eventPrize->id)
             ->where('draw_session_id', $this->drawSessionId)
             ->count();
-        
+
         return max(0, $this->eventPrize->remaining_quantity - $stagedCount);
     }
 
@@ -73,14 +73,7 @@ class GrandDrawing extends Component
     {
         $this->uuid = $uuid;
         $this->eventPrize = EventPrize::with(['event', 'prize'])->where('uuid', $uuid)->firstOrFail();
-
-        // Auto-select active session if exists
-        $this->drawSessionId = DrawSession::where('event_id', $this->eventPrize->event_id)
-            ->where('status', DrawSession::STATUS_ACTIVE)
-            ->where('started_at', '<=', now())
-            ->where('ended_at', '>=', now())
-            ->first()?->id;
-
+        $this->drawSessionId = $this->eventPrize->draw_session_id;
         $this->enableRedraw = (bool) Setting::where('key', 'activate_re_draw_and_confirm')->first()->value ?? true;
 
         $this->updateTotalDataToProcess();
@@ -180,7 +173,7 @@ class GrandDrawing extends Component
     {
         $this->eventPrize->refresh();
         $remainingQuantity = (int)$this->eventPrize->remaining_quantity;
-        
+
         if ($remainingQuantity <= 0) {
             $this->dispatch('error', message: 'Prize exhausted.');
             return;
@@ -274,14 +267,14 @@ class GrandDrawing extends Component
     public function stopDrawing()
     {
         if (!$this->isDrawing) return;
-        
+
         if ($this->batchStatus === 'PROCESSING' || $this->batchStatus === 'PENDING') {
             $batch = BulkDrawBatch::find($this->batchId);
             if ($batch) {
                 $batch->update(['status' => 'CANCELLED']);
             }
         }
-        
+
         \OwenIt\Auditing\Models\Audit::create([
             'user_type'      => Auth::check() ? get_class(Auth::user()) : null,
             'user_id'        => Auth::id(),
@@ -303,12 +296,12 @@ class GrandDrawing extends Component
     private function finalizeResults()
     {
         $batch = BulkDrawBatch::find($this->batchId);
-        
+
         $this->batchId = null;
         $this->isStopping = false;
         $this->isDrawing =   false;
         $this->isReadyToReveal = false;
-        
+
         $this->checkWinner();
     }
 
@@ -466,12 +459,12 @@ class GrandDrawing extends Component
             ->where('status', LotteryTicket::STATUS_ACTIVE)
             ->whereIn('participant_id', function ($q) use ($eventId) {
                 $q->select('participant_id')
-                  ->from('lottery_tickets')
-                  ->where('event_id', $eventId)
-                  ->where('status', LotteryTicket::STATUS_ACTIVE)
-                  ->whereNull('deleted_at')
-                  ->groupBy('participant_id')
-                  ->havingRaw('SUM(total_points) >= ?', [$this->eventPrize->min_points_required]);
+                    ->from('lottery_tickets')
+                    ->where('event_id', $eventId)
+                    ->where('status', LotteryTicket::STATUS_ACTIVE)
+                    ->whereNull('deleted_at')
+                    ->groupBy('participant_id')
+                    ->havingRaw('SUM(total_points) >= ?', [$this->eventPrize->min_points_required]);
             })
             ->whereHas('participant.account.customer', function ($q) use ($eventId, $excludeCustomerIds) {
                 $q->whereDoesntHave('accounts.participants.winners', function ($wq) {
