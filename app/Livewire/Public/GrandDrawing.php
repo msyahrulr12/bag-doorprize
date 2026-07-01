@@ -128,9 +128,6 @@ class GrandDrawing extends Component
 
                 // For the preview table display
                 $displayWinners = collect($this->pendingWinners);
-                if ($this->eventPrize->split_draw > 150) {
-                    $displayWinners = $displayWinners->take(150);
-                }
                 $this->winners = $displayWinners->split(3)->toArray();
             }
         }

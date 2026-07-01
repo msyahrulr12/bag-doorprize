@@ -2,7 +2,6 @@
 
 namespace App\Livewire\Public;
 
-use App\Models\DrawSession;
 use App\Models\EventPrize;
 use App\Models\LotteryTicket;
 use App\Models\Setting;
@@ -11,6 +10,7 @@ use App\Models\TemporaryWinner;
 use App\Models\Prize;
 use App\Models\BulkDrawBatch;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -67,7 +67,10 @@ class BulkDrawing extends Component
     #[Computed]
     public function paginatedWinners()
     {
-        return Winner::where('event_prize_id', $this->eventPrize->id)->orderBy('id', 'desc')->paginate(30);
+        return Winner::where('event_prize_id', $this->eventPrize->id)
+            ->orderBy('id', 'desc')
+            ->with(['participant.account.branch', 'participant.account.customer'])
+            ->paginate(30);
     }
 
     public function mount($uuid)
@@ -111,38 +114,49 @@ class BulkDrawing extends Component
 
     private function checkWinner()
     {
+        $startedAt = new \Datetime();
         if ($this->isDrawing) {
             return false;
         }
         $this->isPreview = false;
 
+        $cacheKey = 't_winners_' . $this->eventPrize->id;
+
         if ($this->drawSessionId) {
-            // Always check if there are temporary winners first
-            $tempWinners = TemporaryWinner::where('draw_session_id', $this->drawSessionId)
-                ->where('event_prize_id', $this->eventPrize->id)
-                ->get();
+            if (Cache::has($cacheKey)) {
+                $this->winners = json_decode(Cache::get($cacheKey), true);
+                return true;
+            } else {
+                // Always check if there are temporary winners first
+                $tempWinners = TemporaryWinner::where('draw_session_id', $this->drawSessionId)
+                    ->where('event_prize_id', $this->eventPrize->id)
+                    ->with(['participant.account.branch', 'participant.account.product', 'eventPrize.prize'])
+                    ->get();
 
-            if ($tempWinners->count() > 0) {
-                $this->pendingWinners = $tempWinners->map(fn($tw) => $tw->getData())->toArray();
-                $this->isPreview = true;
-                $this->totalWinners = count($this->pendingWinners);
+                if ($tempWinners->count() > 0) {
+                    $this->pendingWinners = $tempWinners->map(fn($tw) => $tw->getData())->toArray();
+                    $this->isPreview = true;
+                    $this->totalWinners = count($this->pendingWinners);
 
-                // For batch view, show new winners split into 3 columns
-                $displayWinners = collect($this->pendingWinners);
-                if ($this->eventPrize->split_draw > 150) {
-                    $displayWinners = $displayWinners->take(150);
+                    // $finishedAt = new \Datetime();
+                    // dd('First session', $startedAt, $finishedAt);
+
+                    // For batch view, show new winners split into 3 columns
+                    $displayWinners = collect($this->pendingWinners);
+                    $this->winners = $displayWinners->split(3)->toArray();
+
+                    if (count($this->winners) > 0) {
+                        Cache::put($cacheKey, json_encode($this->winners), 3600);
+                    }
                 }
-                $this->winners = $displayWinners->split(3)->toArray();
             }
         }
 
         $paginatedWinners = $this->paginatedWinners();
-
         if ($paginatedWinners->count() > 0) {
             $firstWinner = $paginatedWinners->first();
 
             if (!$this->isPreview) {
-                $firstWinner->load(['participant.account.branch', 'participant.account.customer']);
                 $this->winner = [
                     'id' => $firstWinner->id,
                     'ticket' => $firstWinner->lotteryTicket?->toArray() ?? [],
@@ -307,7 +321,7 @@ class BulkDrawing extends Component
 
     private function finalizeResults()
     {
-        $batch = BulkDrawBatch::find($this->batchId);
+        // $batch = BulkDrawBatch::find($this->batchId);
 
         $this->batchId = null;
         $this->isStopping = false;

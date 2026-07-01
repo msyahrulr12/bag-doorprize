@@ -60,8 +60,6 @@ class TemporaryWinner extends Model implements Auditable
      */
     public function getData()
     {
-        $this->loadMissing(['participant.account.branch', 'participant.account.product', 'eventPrize.prize']);
-
         return [
             'id' => $this->id,
             'participant_id' => $this->participant_id,

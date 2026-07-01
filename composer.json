@@ -24,6 +24,7 @@
         "mostafaznv/pdf-optimizer": "^1.2",
         "nwidart/laravel-modules": "^12.0",
         "owen-it/laravel-auditing": "^14.0",
+        "predis/predis": "*",
         "webklex/laravel-pdfmerger": "^1.3"
     },
     "require-dev": {
