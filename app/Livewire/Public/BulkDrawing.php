@@ -107,14 +107,44 @@ class BulkDrawing extends Component
 
     public function updatedPage()
     {
+        // On page change, only refresh the confirmed winners display
         if (!$this->isPreview) {
-            $this->checkWinner();
+            $this->refreshConfirmedWinnersDisplay();
+        }
+    }
+
+    /**
+     * Refresh only the confirmed (paginated) winners for table display.
+     * This is called on page change and does NOT touch preview/temporary state.
+     */
+    private function refreshConfirmedWinnersDisplay()
+    {
+        $paginatedWinners = $this->paginatedWinners();
+        if ($paginatedWinners->count() > 0) {
+            $firstWinner = $paginatedWinners->first();
+            $this->winner = [
+                'id' => $firstWinner->id,
+                'ticket' => $firstWinner->lotteryTicket?->toArray() ?? [],
+                'participant' => $firstWinner->participant?->toArray() ?? [],
+                'customer' => $firstWinner->participant?->account?->customer?->toArray() ?? [],
+                'lucky_number' => $firstWinner->winning_number,
+                'winning_number' => $firstWinner->range_start === $firstWinner->range_end
+                    ? $firstWinner->range_start
+                    : "{$firstWinner->range_start} - {$firstWinner->range_end}",
+                'draw_session_id' => $firstWinner->draw_session_id,
+                'branch_name' => $firstWinner->branch_name,
+                'region' => $firstWinner->branch_region,
+                'drawn_at' => $firstWinner->created_at->format('Y-m-d H:i:s'),
+            ];
+            $this->winners = collect($paginatedWinners->items())->map(fn(Winner $w) => $w->getDataBulk())->split(3)->toArray();
+        } else {
+            $this->winners = [];
+            $this->winner = null;
         }
     }
 
     private function checkWinner()
     {
-        $startedAt = new \Datetime();
         if ($this->isDrawing) {
             return false;
         }
@@ -122,69 +152,46 @@ class BulkDrawing extends Component
 
         $cacheKey = 't_winners_' . $this->eventPrize->id;
 
+        // Step 1: Check for temporary (preview) winners
         if ($this->drawSessionId) {
-            if (Cache::has($cacheKey)) {
+            $hasCachedPreview = Cache::has($cacheKey);
+
+            if ($hasCachedPreview) {
+                // Use cached preview data
                 $this->winners = json_decode(Cache::get($cacheKey), true);
+                $this->isPreview = true;
+                $this->totalWinners = collect($this->winners)->flatten(1)->count();
+                // Rebuild pendingWinners from the cached split data
+                $this->pendingWinners = collect($this->winners)->flatten(1)->values()->toArray();
                 return true;
-            } else {
-                // Always check if there are temporary winners first
-                $tempWinners = TemporaryWinner::where('draw_session_id', $this->drawSessionId)
-                    ->where('event_prize_id', $this->eventPrize->id)
-                    ->with(['participant.account.branch', 'participant.account.product', 'eventPrize.prize'])
-                    ->get();
+            }
 
-                if ($tempWinners->count() > 0) {
-                    $this->pendingWinners = $tempWinners->map(fn($tw) => $tw->getData())->toArray();
-                    $this->isPreview = true;
-                    $this->totalWinners = count($this->pendingWinners);
+            // No cache — query temporary winners from DB
+            $tempWinners = TemporaryWinner::where('draw_session_id', $this->drawSessionId)
+                ->where('event_prize_id', $this->eventPrize->id)
+                ->with(['participant.account.branch', 'participant.account.product', 'eventPrize.prize'])
+                ->get();
 
-                    // $finishedAt = new \Datetime();
-                    // dd('First session', $startedAt, $finishedAt);
+            if ($tempWinners->count() > 0) {
+                $this->pendingWinners = $tempWinners->map(fn($tw) => $tw->getData())->toArray();
+                $this->isPreview = true;
+                $this->totalWinners = count($this->pendingWinners);
 
-                    // For batch view, show new winners split into 3 columns
-                    $displayWinners = collect($this->pendingWinners);
-                    $this->winners = $displayWinners->split(3)->toArray();
+                // For batch view, show new winners split into 3 columns
+                $displayWinners = collect($this->pendingWinners);
+                $this->winners = $displayWinners->split(3)->toArray();
 
-                    if (count($this->winners) > 0) {
-                        Cache::put($cacheKey, json_encode($this->winners), 3600);
-                    }
+                // Cache the preview data
+                if (count($this->winners) > 0) {
+                    Cache::put($cacheKey, json_encode($this->winners), 3600);
                 }
+                return true;
             }
         }
 
-        $paginatedWinners = $this->paginatedWinners();
-        if ($paginatedWinners->count() > 0) {
-            $firstWinner = $paginatedWinners->first();
-
-            if (!$this->isPreview) {
-                $this->winner = [
-                    'id' => $firstWinner->id,
-                    'ticket' => $firstWinner->lotteryTicket?->toArray() ?? [],
-                    'participant' => $firstWinner->participant?->toArray() ?? [],
-                    'customer' => $firstWinner->participant?->account?->customer?->toArray() ?? [],
-                    'lucky_number' => $firstWinner->winning_number,
-                    'winning_number' => $firstWinner->range_start === $firstWinner->range_end
-                        ? $firstWinner->range_start
-                        : "{$firstWinner->range_start} - {$firstWinner->range_end}",
-                    'draw_session_id' => $firstWinner->draw_session_id,
-                    'branch_name' => $firstWinner->branch_name,
-                    'region' => $firstWinner->branch_region,
-                    'drawn_at' => $firstWinner->created_at->format('Y-m-d H:i:s'),
-                ];
-            }
-
-            // For the table display (confirmed ones below)
-            if (!$this->isPreview) {
-                $this->winners = collect($paginatedWinners->items())->map(fn(Winner $w) => $w->getDataBulk())->split(3)->toArray();
-            }
-
-            return true;
-        }
-
-        if (!$this->isPreview) {
-            $this->winners = [];
-        }
-        return false;
+        // Step 2: No temporary winners — show confirmed (paginated) winners
+        $this->refreshConfirmedWinnersDisplay();
+        return !empty($this->winners);
     }
 
     public function startDrawing()
@@ -248,6 +255,9 @@ class BulkDrawing extends Component
         $this->pendingWinners = [];
         $this->candidates = [];
         $this->isPreview = false;
+
+        // Clear preview cache when starting a new draw
+        Cache::forget('t_winners_' . $this->eventPrize->id);
 
         // Dispatch background job
         \App\Jobs\ProcessBulkDrawJob::dispatch($batch->id);
@@ -387,6 +397,10 @@ class BulkDrawing extends Component
             }
             DB::commit();
 
+            // Clear the preview cache so stale temporary data doesn't persist
+            $cacheKey = 't_winners_' . $this->eventPrize->id;
+            Cache::forget($cacheKey);
+
             $this->dispatch('success', message: 'All winners have been confirmed!');
             $this->dispatch('winner-confirmed');
             $this->winner = null;
@@ -408,6 +422,10 @@ class BulkDrawing extends Component
             $this->isStopping = false;
             $this->isReadyToReveal = false;
             $this->batchId = null;
+
+            // Delete cache if cache exists
+            $cacheKey = 't_winners_' . $this->eventPrize->id;
+            Cache::forget($cacheKey);
 
             // Delete Temporary Winners
             TemporaryWinner::where('draw_session_id', $this->drawSessionId)
