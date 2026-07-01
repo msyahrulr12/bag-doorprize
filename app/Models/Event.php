@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use OwenIt\Auditing\Contracts\Auditable;
@@ -99,7 +98,10 @@ class Event extends Model implements Auditable
 
     public function randomParticipants()
     {
-        return $this->hasMany(Participant::class, 'event_id')->with(['account', 'account.branch', 'lotteryTickets'])->where('status', Participant::STATUS_ACTIVE)->limit(1000);
+        return $this->hasMany(Participant::class, 'event_id')
+            ->with(['account', 'account.branch', 'lotteryTickets'])
+            ->where('status', Participant::STATUS_ACTIVE)
+            ->limit(1000);
     }
 
     public function activeLotteryTickets()

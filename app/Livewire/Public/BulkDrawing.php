@@ -128,7 +128,11 @@ class BulkDrawing extends Component
                 $this->totalWinners = count($this->pendingWinners);
 
                 // For batch view, show new winners split into 3 columns
-                $this->winners = collect($this->pendingWinners)->split(3)->toArray();
+                $displayWinners = collect($this->pendingWinners);
+                if ($this->eventPrize->split_draw > 150) {
+                    $displayWinners = $displayWinners->take(150);
+                }
+                $this->winners = $displayWinners->split(3)->toArray();
             }
         }
 
