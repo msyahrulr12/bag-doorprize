@@ -289,7 +289,10 @@ class BulkDrawing extends Component
                             ->where('status', LotteryTicket::STATUS_ACTIVE)
                             ->whereNull('deleted_at')
                             ->groupBy('participant_id')
-                            ->havingRaw('SUM(total_points) >= ?', [$this->eventPrize->min_points_required]);
+                            ->havingRaw('SUM(total_points) >= ?', [$this->eventPrize->min_points_required])
+                            ->when($this->eventPrize->max_points_required, function ($q) {
+                                $q->havingRaw('SUM(total_points) <= ?', [$this->eventPrize->max_points_required]);
+                            });
                     })
                     ->where('status', LotteryTicket::STATUS_ACTIVE)
                     ->inRandomOrder()
@@ -351,7 +354,16 @@ class BulkDrawing extends Component
     {
         $this->isDrawing = false;
         $this->isPreview = true;
-        $this->updateTotalDataToProcess();
+        $this->batchId = null;
+        $this->isReadyToReveal = false;
+
+        // Lightweight refresh — only update remaining count, skip random participant data
+        // (random data is only needed for the shuffle animation which is already over)
+        $this->eventPrize->refresh();
+        $this->totalDataToProcess = $this->eventPrize?->remaining_quantity && $this->eventPrize?->remaining_quantity < $this->eventPrize?->split_draw
+            ? $this->eventPrize?->remaining_quantity
+            : $this->eventPrize?->split_draw;
+
         $this->checkWinner();
 
         if (empty($this->pendingWinners)) {

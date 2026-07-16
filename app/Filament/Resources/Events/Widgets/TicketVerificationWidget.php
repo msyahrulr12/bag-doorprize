@@ -36,18 +36,18 @@ class TicketVerificationWidget extends TableWidget
                     ->limit(1);
 
                 $prevPointsSubquery = PointHistory::query()
-                    ->from('point_histories as prev_ph')
-                    ->selectRaw('COALESCE(SUM(prev_ph.points), 0)')
-                    ->whereColumn('prev_ph.account_id', 'point_histories.account_id')
-                    ->whereRaw('(prev_ph.year < point_histories.year OR (prev_ph.year = point_histories.year AND prev_ph.month < point_histories.month))')
-                    ->whereNull('prev_ph.deleted_at');
+                    ->from('point_histories as sum_ph')
+                    ->selectRaw('COALESCE(SUM(sum_ph.points), 0)')
+                    ->whereColumn('sum_ph.account_id', 'point_histories.account_id')
+                    ->whereRaw('(sum_ph.year < point_histories.year OR (sum_ph.year = point_histories.year AND sum_ph.month < point_histories.month))')
+                    ->whereNull('sum_ph.deleted_at');
 
                 $totalPointsSubquery = PointHistory::query()
-                    ->from('point_histories as prev_ph')
-                    ->selectRaw('COALESCE(SUM(prev_ph.points), 0)')
-                    ->whereColumn('prev_ph.account_id', 'point_histories.account_id')
-                    ->whereRaw('(prev_ph.year < point_histories.year OR (prev_ph.year = point_histories.year AND prev_ph.month <= point_histories.month))')
-                    ->whereNull('prev_ph.deleted_at');
+                    ->from('point_histories as sum_ph')
+                    ->selectRaw('COALESCE(SUM(sum_ph.points), 0)')
+                    ->whereColumn('sum_ph.account_id', 'point_histories.account_id')
+                    ->whereRaw('(sum_ph.year < point_histories.year OR (sum_ph.year = point_histories.year AND sum_ph.month <= point_histories.month))')
+                    ->whereNull('sum_ph.deleted_at');
 
                 $event = $this->record;
 
@@ -68,11 +68,14 @@ class TicketVerificationWidget extends TableWidget
                         }
 
                         $statusEvent = $event->status;
-                        if ($statusEvent == Event::STATUS_COMPLETED && $event->participants()->exists()) {
+                        if ($statusEvent == Event::STATUS_COMPLETED) {
                             $subQuery->select('participants.account_id')
                                 ->from('participants')
-                                ->join('event_participant', 'event_participant.participant_id', '=', 'participants.id')
-                                ->where('event_participant.event_id', $event->id)
+                                ->leftJoin('event_participant', 'event_participant.participant_id', '=', 'participants.id')
+                                ->where(function ($q) use ($event) {
+                                    $q->where('participants.event_id', $event->id)
+                                        ->orWhere('event_participant.event_id', $event->id);
+                                })
                                 ->whereNull('participants.deleted_at');
                         } else {
                             $subQuery->select('participants.account_id')
@@ -249,10 +252,13 @@ class TicketVerificationWidget extends TableWidget
             ->headerActions([
                 ExportAction::make()
                     ->exporter(\App\Filament\Exports\TicketVerificationExporter::class)
+                    ->options(fn() => [
+                        'event_id' => $this->record?->id,
+                    ])
                     ->label('Export CSV/Excel')
                     ->color('success')
                     ->icon('heroicon-o-arrow-down-tray')
-                    ->chunkSize(250),
+                    ->chunkSize(20000),
             ]);
     }
 }

@@ -40,6 +40,18 @@ class EventForm
                     ->maxSize(2048)
                     ->disk('public')
                     ->directory('uploads'),
+                FileUpload::make('sound_effect_drawing')
+                    ->label('Sound Effect Drawing')
+                    ->acceptedFileTypes(['audio/mp3', 'audio/mpeg', 'audio/wav'])
+                    ->maxSize(4096)
+                    ->disk('public')
+                    ->directory('uploads'),
+                FileUpload::make('sound_effect_winner_found')
+                    ->label('Sound Effect Winner Found')
+                    ->acceptedFileTypes(['audio/mp3', 'audio/mpeg', 'audio/wav'])
+                    ->maxSize(4096)
+                    ->disk('public')
+                    ->directory('uploads'),
                 Textarea::make('description')
                     ->columnSpanFull(),
             ]);

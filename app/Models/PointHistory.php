@@ -10,6 +10,11 @@ class PointHistory extends Model implements Auditable
 {
     use \OwenIt\Auditing\Auditable, SoftDeletes;
 
+    public static function boot()
+    {
+        parent::boot();
+    }
+
     protected $fillable = [
         'account_id',
         'amount',

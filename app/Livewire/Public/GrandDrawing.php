@@ -278,6 +278,9 @@ class GrandDrawing extends Component
                 $candidateTickets = LotteryTicket::query()
                     ->where('event_id', $this->eventPrize->event_id)
                     ->where('total_points', '>=', $this->eventPrize->min_points_required)
+                    ->when($this->eventPrize->max_points_required, function ($q) {
+                        $q->havingRaw('SUM(total_points) <= ?', [$this->eventPrize->max_points_required]);
+                    })
                     ->where('status', LotteryTicket::STATUS_ACTIVE)
                     ->inRandomOrder()
                     ->limit(20)
@@ -495,7 +498,10 @@ class GrandDrawing extends Component
                     ->where('status', LotteryTicket::STATUS_ACTIVE)
                     ->whereNull('deleted_at')
                     ->groupBy('participant_id')
-                    ->havingRaw('SUM(total_points) >= ?', [$this->eventPrize->min_points_required]);
+                    ->havingRaw('SUM(total_points) >= ?', [$this->eventPrize->min_points_required])
+                    ->when($this->eventPrize->max_points_required, function ($q) {
+                        $q->havingRaw('SUM(total_points) <= ?', [$this->eventPrize->max_points_required]);
+                    });
             })
             ->whereHas('participant.account.customer', function ($q) use ($eventId, $excludeCustomerIds) {
                 $q->whereDoesntHave('accounts.participants.winners', function ($wq) {

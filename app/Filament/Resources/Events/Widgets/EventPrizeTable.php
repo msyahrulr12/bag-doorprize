@@ -129,6 +129,11 @@ class EventPrizeTable extends TableWidget
                     ->numeric()
                     ->sortable()
                     ->searchable(),
+                TextColumn::make('max_points_required')
+                    ->label('Max Points Req.')
+                    ->numeric()
+                    ->sortable()
+                    ->searchable(),
                 TextColumn::make('total_value')
                     ->label('Total Value')
                     ->state(fn($record) => $record->prize->value * $record->total_quantity)
@@ -212,29 +217,67 @@ class EventPrizeTable extends TableWidget
                         $drawSession = DrawSession::find($drawSessionId);
                         $event = $this->record ?? \App\Models\Event::find($eventId);
 
-                        // Get all event prizes for this draw session, ordered by prize value desc
+                        // Determine if this is a draft/temporary export
+                        $isActiveSession = $drawSession && $drawSession->status === DrawSession::STATUS_ACTIVE;
+                        $isActiveEvent = $event && $event->status === \App\Models\Event::STATUS_ACTIVE;
+                        $isDraft = $isActiveSession || $isActiveEvent;
+
+                        // Get event prizes with DB-level ordering (avoid collection sort)
+                        $eventPrizeIds = EventPrize::where('event_id', $eventId)
+                            ->where('draw_session_id', $drawSessionId)
+                            ->pluck('id');
+
                         $eventPrizes = EventPrize::with('prize')
                             ->where('event_id', $eventId)
                             ->where('draw_session_id', $drawSessionId)
-                            ->get()
-                            ->sortBy(function ($ep) {
-                                return $ep->prize->value ?? 0;
-                            });
+                            ->join('prizes', 'event_prizes.prize_id', '=', 'prizes.id')
+                            ->orderBy('prizes.value', 'asc')
+                            ->select('event_prizes.*')
+                            ->get();
 
-                        // Get all winners for this draw session, grouped by event_prize_id
-                        $winners = \App\Models\Winner::with(['participant.account.branch', 'participant.account.customer'])
-                            ->where('draw_session_id', $drawSessionId)
-                            ->whereIn('event_prize_id', $eventPrizes->pluck('id'))
+                        // Get finalized winners (no eager loading of nested relations —
+                        // Winner model already has denormalized participant_name,
+                        // participant_account_number, branch_name, branch_region fields)
+                        $winners = \App\Models\Winner::where('draw_session_id', $drawSessionId)
+                            ->whereIn('event_prize_id', $eventPrizeIds)
                             ->orderBy('id', 'asc')
                             ->get()
                             ->groupBy('event_prize_id');
 
+                        // For active/incomplete sessions, also get temporary winners
+                        // and merge per-prize (fill in prizes that have no finalized winners yet)
+                        $tempWinners = collect();
+                        if ($isDraft) {
+                            $tempWinners = TemporaryWinner::where('draw_session_id', $drawSessionId)
+                                ->whereIn('event_prize_id', $eventPrizeIds)
+                                ->orderBy('id', 'asc')
+                                ->get()
+                                ->groupBy('event_prize_id');
+                        }
+
+                        // Merge: for each prize, use finalized winners if available, otherwise temp winners
+                        $mergedWinners = collect();
+                        foreach ($eventPrizeIds as $epId) {
+                            $finalized = $winners->get($epId, collect());
+                            $temporary = $tempWinners->get($epId, collect());
+                            // Use finalized winners for this prize if they exist, otherwise fall back to temp
+                            $mergedWinners[$epId] = $finalized->isNotEmpty() ? $finalized : $temporary;
+                        }
+
+                        // Sort event prizes by its count of total winners from low to high
+                        $eventPrizes = $eventPrizes->sortBy(function ($eventPrize) use ($mergedWinners) {
+                            return ($mergedWinners[$eventPrize->id] ?? collect())->count();
+                        });
+
                         $eventName = $event->event_name ?? 'Event';
                         $sessionName = $drawSession->name ?? 'Draw Session';
                         $title = "PEMENANG " . strtoupper($eventName) . " - " . strtoupper($sessionName);
+                        if ($isDraft && in_array(env('APP_ENV'), ['local', 'dev'])) {
+                            $title .= " (DRAFT - BELUM FINAL)";
+                        }
                         $filename = 'winners_' . str_replace([' ', '/', '\\'], '_', $eventName) . '_' . str_replace([' ', '/', '\\'], '_', $sessionName) . '_' . now()->format('Ymd_His') . '.xls';
 
-                        return response()->streamDownload(function () use ($eventPrizes, $winners, $title) {
+                        return response()->streamDownload(function () use ($eventPrizes, $mergedWinners, $title, $isDraft) {
                             $e = fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
                             echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
@@ -242,6 +285,7 @@ class EventPrizeTable extends TableWidget
                             echo '<style>
                                 td, th { font-family: Arial; font-size: 10pt; border: 1px solid #000; padding: 4px; }
                                 .title { font-size: 14pt; font-weight: bold; text-align: center; border: none; }
+                                .draft-notice { font-size: 11pt; font-weight: bold; text-align: center; border: none; color: #dc2626; }
                                 .prize-header { font-size: 12pt; font-weight: bold; text-align: center; border: none; }
                                 .col-header { font-weight: bold; background-color: #f3f4f6; text-align: center; }
                             </style></head><body>';
@@ -250,11 +294,15 @@ class EventPrizeTable extends TableWidget
                             echo '<table border="1">';
                             echo '<tr><td class="title" colspan="10">' . $e($title) . '</td></tr>';
 
+                            if ($isDraft && in_array(env('APP_ENV'), ['local', 'dev'])) {
+                                echo '<tr><td class="draft-notice" colspan="10">⚠ DATA SEMENTARA - Sesi undian belum selesai / Event masih aktif</td></tr>';
+                            }
+
                             $globalRow = 0;
 
                             foreach ($eventPrizes as $eventPrize) {
                                 $prizeName = $eventPrize->prize->prize_name ?? 'Unknown Prize';
-                                $prizeWinners = $winners->get($eventPrize->id, collect());
+                                $prizeWinners = $mergedWinners[$eventPrize->id] ?? collect();
 
                                 // Empty row separator
                                 echo '<tr><td colspan="10" style="border:none;">&nbsp;</td></tr>';
@@ -284,10 +332,12 @@ class EventPrizeTable extends TableWidget
                                         $globalRow++;
                                         $no++;
 
-                                        $name = $winner->participant_name ?? ($winner->participant?->account?->customer?->name ?? 'N/A');
-                                        $accountNumber = $winner->participant_account_number ?? ($winner->participant?->account?->account_number ?? 'N/A');
-                                        $branch = $winner->branch_name ?? ($winner->participant?->account?->branch?->branch_name ?? 'N/A');
-                                        $region = $winner->branch_region ?? ($winner->participant?->account?->branch?->region ?? 'N/A');
+                                        // Use denormalized fields directly (both Winner and TemporaryWinner
+                                        // store participant_name, participant_account_number, branch_name, branch_region)
+                                        $name = $winner->participant_name ?? 'N/A';
+                                        $accountNumber = $winner->participant_account_number ?? 'N/A';
+                                        $branch = $winner->branch_name ?? 'N/A';
+                                        $region = $winner->branch_region ?? 'N/A';
                                         $luckyNumber = $winner->winning_number ?? 'N/A';
 
                                         echo '<tr>';
@@ -351,6 +401,9 @@ class EventPrizeTable extends TableWidget
                         TextInput::make('min_points_required')
                             ->numeric()
                             ->required(),
+                        TextInput::make('max_points_required')
+                            ->numeric()
+                            ->nullable(),
                         TextInput::make('split_draw')
                             ->numeric()
                             ->required(),
@@ -382,6 +435,9 @@ class EventPrizeTable extends TableWidget
                         TextInput::make('min_points_required')
                             ->numeric()
                             ->required(),
+                        TextInput::make('max_points_required')
+                            ->numeric()
+                            ->nullable(),
                         TextInput::make('split_draw')
                             ->numeric()
                             ->required(),

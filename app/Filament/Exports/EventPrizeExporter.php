@@ -21,6 +21,7 @@ class EventPrizeExporter extends Exporter
             ExportColumn::make('total_quantity'),
             ExportColumn::make('remaining_quantity'),
             ExportColumn::make('min_points_required'),
+            ExportColumn::make('max_points_required'),
             ExportColumn::make('created_at'),
         ];
     }

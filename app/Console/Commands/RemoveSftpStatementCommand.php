@@ -44,8 +44,20 @@ class RemoveSftpStatementCommand extends Command
         }
 
         if ($month && $year) {
-            $query->where('metadata->month', (int) $month)
-                ->where('metadata->year', (int) $year);
+            $query->where(function ($q) use ($month, $year) {
+                // If it is correctly stored as JSON
+                $q->where(function ($q1) use ($month, $year) {
+                    $q1->where('metadata->month', (int) $month)
+                       ->where('metadata->year', (int) $year);
+                })
+                // If it was double-encoded as a string (fallback)
+                ->orWhere('metadata', 'LIKE', '%"month":' . (int)$month . '%')
+                ->orWhere('metadata', 'LIKE', '%"month":"' . (int)$month . '"%');
+            })->where(function ($q) use ($year) {
+                $q->where('metadata->year', (int) $year)
+                  ->orWhere('metadata', 'LIKE', '%"year":' . (int)$year . '%')
+                  ->orWhere('metadata', 'LIKE', '%"year":"' . (int)$year . '"%');
+            });
         } elseif ($month || $year) {
             $this->error('Please provide both month and year if you want to filter by period.');
             return 1;

@@ -467,12 +467,15 @@ class DrawWinner extends Page implements HasForms
             ->where('status', LotteryTicket::STATUS_ACTIVE)
             ->whereIn('participant_id', function ($q) use ($eventId) {
                 $q->select('participant_id')
-                  ->from('lottery_tickets')
-                  ->where('event_id', $eventId)
-                  ->where('status', LotteryTicket::STATUS_ACTIVE)
-                  ->whereNull('deleted_at')
-                  ->groupBy('participant_id')
-                  ->havingRaw('SUM(total_points) >= ?', [$this->eventPrize->min_points_required]);
+                    ->from('lottery_tickets')
+                    ->where('event_id', $eventId)
+                    ->where('status', LotteryTicket::STATUS_ACTIVE)
+                    ->whereNull('deleted_at')
+                    ->groupBy('participant_id')
+                    ->havingRaw('SUM(total_points) >= ?', [$this->eventPrize->min_points_required])
+                    ->when($this->eventPrize->max_points_required, function ($q) {
+                        $q->havingRaw('SUM(total_points) <= ?', [$this->eventPrize->max_points_required]);
+                    });
             })
             ->whereHas('participant.account.customer', function ($q) use ($eventId, $excludeCustomerIds) {
                 $q->whereDoesntHave('accounts.participants.winners', function ($wq) {

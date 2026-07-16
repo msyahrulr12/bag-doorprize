@@ -5,11 +5,15 @@
         showWinner: false,
         number: 'XXXXXXXXX',
         placeholders: [],
-        stopRequested: false,
-        checkStopInterval: null,
         counter: null,
+        soundsReady: false,
         triggerWin() {
             this.showWinner = true;
+            // Stop drawing sound, play winner sound
+            if (window.soundManager) {
+                window.soundManager.stop('drawing');
+                window.soundManager.play('winner');
+            }
             confetti({
                 particleCount: 150,
                 spread: 70,
@@ -17,7 +21,29 @@
                 colors: ['#2d7a8e', '#FFFFFF', '#64748b']
             });
         },
+        async initSounds() {
+            if (!window.soundManager || this.soundsReady) return;
+            window.soundManager.init();
+            const sounds = {};
+            const drawingUrl = @js($eventPrize->event->sound_effect_drawing ? '/storage/' . $eventPrize->event->sound_effect_drawing : null);
+            const winnerUrl = @js($eventPrize->event->sound_effect_winner_found ? '/storage/' . $eventPrize->event->sound_effect_winner_found : null);
+            if (drawingUrl) sounds.drawing = drawingUrl;
+            if (winnerUrl) sounds.winner = winnerUrl;
+            if (Object.keys(sounds).length > 0) {
+                await window.soundManager.preloadSounds(sounds);
+            }
+            this.soundsReady = true;
+        },
         init() {
+            // Preload sounds on first user interaction (AudioContext policy)
+            const activateOnce = async () => {
+                await this.initSounds();
+                document.removeEventListener('click', activateOnce);
+                document.removeEventListener('keydown', activateOnce);
+            };
+            document.addEventListener('click', activateOnce, { once: true });
+            document.addEventListener('keydown', activateOnce, { once: true });
+
             const names = @js($randomData['names'] ?? []);
             const branches = @js($randomData['branches'] ?? []);
             const total = @js($totalDataToProcess);
@@ -44,24 +70,24 @@
                 }
             }, 80);
         },
-        start() {
-            this.stopRequested = false;
-            
-            if (this.checkStopInterval) clearInterval(this.checkStopInterval);
-            this.checkStopInterval = setInterval(() => {
-                // Only allow finish if user requested stop AND the background job is done (ReadyToReveal)
-                if (this.stopRequested && this.isReadyToReveal) {
-                    this.finish();
-                }
-            }, 100);
+        async start() {
+            // Ensure sounds are loaded, then play drawing loop
+            await this.initSounds();
+            if (window.soundManager) {
+                window.soundManager.playLoop('drawing');
+            }
         },
         stop() {
             if (!this.drawing) return;
-            this.stopRequested = true;
-            $wire.stopDrawing(); // Signal backend to cancel if still processing
+            // STOP button only appears when isReadyToReveal=true (batch done),
+            // so we go straight to finish — single server roundtrip.
+            this.finish();
         },
         finish() {
-            clearInterval(this.checkStopInterval);
+            // Stop drawing sound — winner sound will play via triggerWin() when results render
+            if (window.soundManager) {
+                window.soundManager.stop('drawing');
+            }
             this.drawing = false;
             $wire.finishDrawing();
         },
@@ -76,7 +102,8 @@
         }
     }"
     x-on:trigger-animation.window="start()"
-    x-on:winner-confirmed.window="showWinner = false; number = 'XXXXXXXXX';">
+    x-on:winner-confirmed.window="showWinner = false; number = 'XXXXXXXXX'; if (window.soundManager) window.soundManager.stopAll();">
+
 
     @if($isDrawing && $batchId)
     <div wire:poll.1500ms="checkBatchStatus"></div>

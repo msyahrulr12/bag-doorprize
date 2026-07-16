@@ -18,6 +18,7 @@ class EventPrize extends Model implements Auditable
         'total_quantity',
         'remaining_quantity',
         'min_points_required',
+        'max_points_required',
         'split_draw',
         'draw_session_id',
     ];

@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\Events\Widgets;
 
+use App\Models\Account;
+use App\Models\Customer;
 use App\Models\Event;
 use App\Models\Participant;
 use App\Models\LotteryTicket;
@@ -178,7 +180,13 @@ class EligibleTicketWidget extends TableWidget
             ->deferLoading()
             ->query(function () use ($event) {
                 $query = Participant::query()
-                    ->with(['account.customer', 'account.branch', 'lotteryTickets'])
+                    ->with([
+                        'account.customer',
+                        'account.branch',
+                        'lotteryTickets' => function ($query) {
+                            $query->where('status', LotteryTicket::STATUS_ACTIVE);
+                        }
+                    ])
                     ->whereHas('lotteryTickets', function ($query) {
                         $query->where('status', LotteryTicket::STATUS_ACTIVE);
                     })
@@ -190,11 +198,14 @@ class EligibleTicketWidget extends TableWidget
 
                 if ($event) {
                     $statusEvent = $event->status;
-                    if ($statusEvent == Event::STATUS_COMPLETED && $event->participants()->exists()) {
-                        $query->whereIn('participants.id', function ($subQuery) use ($event) {
-                            $subQuery->select('participant_id')
-                                ->from('event_participant')
-                                ->where('event_id', $event->id);
+                    if ($statusEvent == Event::STATUS_COMPLETED) {
+                        $query->where(function ($q) use ($event) {
+                            $q->where('participants.event_id', $event->id)
+                                ->orWhereIn('participants.id', function ($subQuery) use ($event) {
+                                    $subQuery->select('participant_id')
+                                        ->from('event_participant')
+                                        ->where('event_id', $event->id);
+                                });
                         });
                     } else {
                         $query->where('participants.event_id', $event->id);
@@ -213,10 +224,13 @@ class EligibleTicketWidget extends TableWidget
             ->headerActions([
                 ExportAction::make()
                     ->exporter(\App\Filament\Exports\EligibleTicketExporter::class)
+                    ->options(fn() => [
+                        'event_id' => $this->record?->id,
+                    ])
                     ->label('Export CSV/Excel')
                     ->color('success')
                     ->icon('heroicon-o-arrow-down-tray')
-                    ->chunkSize(250),
+                    ->chunkSize(20000),
             ]);
     }
 }

@@ -437,6 +437,21 @@ class ProcessPointHistory implements ShouldQueue
                 ['event_id', 'account_id'],
                 ['participant_name', 'participant_cif', 'participant_account_number', 'participant_email', 'participant_phone_number', 'updated_at']
             );
+
+            // Sync to event_participant pivot table
+            $syncedParticipants = Participant::where('event_id', $this->eventId)
+                ->whereIn('account_id', array_keys($upserts))
+                ->select(['id', 'event_id'])
+                ->get();
+
+            $pivotData = $syncedParticipants->map(fn($p) => [
+                'event_id' => $p->event_id,
+                'participant_id' => $p->id,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ])->toArray();
+
+            DB::table('event_participant')->insertOrIgnore($pivotData);
         }
 
         // Return refreshed map of account_id => participant_id
@@ -445,6 +460,7 @@ class ProcessPointHistory implements ShouldQueue
             ->pluck('id', 'account_id')
             ->toArray();
     }
+
 
     private function parseAmount($value): float
     {

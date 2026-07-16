@@ -46,12 +46,14 @@ class ParticipantTable extends TableWidget
 
                 if ($this->record) {
                     $statusEvent = $this->record->status;
-                    if ($statusEvent == Event::STATUS_COMPLETED && $this->record->participants()->exists()) {
-                        // For completed events, use the pivot table
-                        $query->whereIn('participants.id', function ($subQuery) {
-                            $subQuery->select('participant_id')
-                                ->from('event_participant')
-                                ->where('event_id', $this->record->id);
+                    if ($statusEvent == Event::STATUS_COMPLETED) {
+                        $query->where(function ($q) {
+                            $q->where('participants.event_id', $this->record->id)
+                                ->orWhereIn('participants.id', function ($subQuery) {
+                                    $subQuery->select('participant_id')
+                                        ->from('event_participant')
+                                        ->where('event_id', $this->record->id);
+                                });
                         });
                     } else {
                         // For active or other events, use direct event_id filter

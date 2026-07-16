@@ -19,7 +19,9 @@ class Event extends Model implements Auditable
         'event_ended_at',
         'description',
         'last_ticket_number',
-        'public_draw_background'
+        'public_draw_background',
+        'sound_effect_drawing',
+        'sound_effect_winner_found',
     ];
 
     public const STATUS_DRAFT = 'DRAFT';

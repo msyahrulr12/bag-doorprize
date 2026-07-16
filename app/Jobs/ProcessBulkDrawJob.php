@@ -50,62 +50,65 @@ class ProcessBulkDrawJob implements ShouldQueue
 
             // 2. Fetch ALL eligible tickets ONCE to save memory/time
             Log::info("BulkDraw - Fetching eligible tickets for event: {$eventId}");
-                $drawSessionId = $batch->draw_session_id;
+            $drawSessionId = $batch->draw_session_id;
 
-                $tickets = \DB::table('lottery_tickets')
-                    ->join('participants', 'participants.id', '=', 'lottery_tickets.participant_id')
-                    ->join('accounts', 'accounts.id', '=', 'participants.account_id')
-                    ->join('branches', 'branches.id', '=', 'accounts.branch_id')
-                    ->join('customers', 'customers.id', '=', 'accounts.customer_id')
-                    ->select([
-                        'lottery_tickets.id',
-                        'lottery_tickets.total_points',
-                        'lottery_tickets.range_start',
-                        'lottery_tickets.range_end',
-                        'lottery_tickets.participant_id',
-                        'accounts.customer_id as customer_id',
-                        'customers.cif',
-                        'branches.id as branch_id',
-                        'branches.region',
-                        'branches.branch_code',
-                        'branches.branch_name',
-                        'branches.company_book as branch_company_book',
-                        'participants.participant_name',
-                        'participants.participant_email',
-                        'participants.participant_phone_number',
-                        'accounts.account_number',
-                        'accounts.status as account_status',
-                    ])
-                    ->where('lottery_tickets.event_id', $eventId)
-                    ->where('lottery_tickets.status', LotteryTicket::STATUS_ACTIVE)
-                    ->whereIn('lottery_tickets.participant_id', function ($q) use ($eventId, $eventPrize) {
-                        $q->select('participant_id')
-                            ->from('lottery_tickets')
-                            ->where('event_id', $eventId)
-                            ->where('status', LotteryTicket::STATUS_ACTIVE)
-                            ->whereNull('deleted_at')
-                            ->groupBy('participant_id')
-                            ->havingRaw('SUM(total_points) >= ?', [$eventPrize->min_points_required]);
-                    })
-                    ->whereNull('lottery_tickets.deleted_at')
-                    ->whereNull('participants.deleted_at')
-                    ->whereNotExists(function ($query) use ($drawSessionId) {
-                        $query->select(\DB::raw(1))
-                            ->from('winners')
-                            ->join('participants as p_check', 'p_check.id', '=', 'winners.participant_id')
-                            ->join('accounts as a_check', 'a_check.id', '=', 'p_check.account_id')
-                            ->whereColumn('a_check.customer_id', 'customers.id')
-                            ->where('winners.draw_session_id', $drawSessionId)
-                            ->whereNull('winners.deleted_at');
-                    })
-                    ->whereNotExists(function ($query) use ($drawSessionId) {
-                        $query->select(\DB::raw(1))
-                            ->from('temporary_winners')
-                            ->whereColumn('temporary_winners.participant_cif', 'customers.cif')
-                            ->where('temporary_winners.draw_session_id', $drawSessionId)
-                            ->whereNull('temporary_winners.deleted_at');
-                    })
-                    ->get();
+            $tickets = \DB::table('lottery_tickets')
+                ->join('participants', 'participants.id', '=', 'lottery_tickets.participant_id')
+                ->join('accounts', 'accounts.id', '=', 'participants.account_id')
+                ->join('branches', 'branches.id', '=', 'accounts.branch_id')
+                ->join('customers', 'customers.id', '=', 'accounts.customer_id')
+                ->select([
+                    'lottery_tickets.id',
+                    'lottery_tickets.total_points',
+                    'lottery_tickets.range_start',
+                    'lottery_tickets.range_end',
+                    'lottery_tickets.participant_id',
+                    'accounts.customer_id as customer_id',
+                    'customers.cif',
+                    'branches.id as branch_id',
+                    'branches.region',
+                    'branches.branch_code',
+                    'branches.branch_name',
+                    'branches.company_book as branch_company_book',
+                    'participants.participant_name',
+                    'participants.participant_email',
+                    'participants.participant_phone_number',
+                    'accounts.account_number',
+                    'accounts.status as account_status',
+                ])
+                ->where('lottery_tickets.event_id', $eventId)
+                ->where('lottery_tickets.status', LotteryTicket::STATUS_ACTIVE)
+                ->whereIn('lottery_tickets.participant_id', function ($q) use ($eventId, $eventPrize) {
+                    $q->select('participant_id')
+                        ->from('lottery_tickets')
+                        ->where('event_id', $eventId)
+                        ->where('status', LotteryTicket::STATUS_ACTIVE)
+                        ->whereNull('deleted_at')
+                        ->groupBy('participant_id')
+                        ->havingRaw('SUM(total_points) >= ?', [$eventPrize->min_points_required])
+                        ->when($eventPrize->max_points_required, function ($q) use ($eventPrize) {
+                            $q->havingRaw('SUM(total_points) <= ?', [$eventPrize->max_points_required]);
+                        });
+                })
+                ->whereNull('lottery_tickets.deleted_at')
+                ->whereNull('participants.deleted_at')
+                ->whereNotExists(function ($query) use ($drawSessionId) {
+                    $query->select(\DB::raw(1))
+                        ->from('winners')
+                        ->join('participants as p_check', 'p_check.id', '=', 'winners.participant_id')
+                        ->join('accounts as a_check', 'a_check.id', '=', 'p_check.account_id')
+                        ->whereColumn('a_check.customer_id', 'customers.id')
+                        ->where('winners.draw_session_id', $drawSessionId)
+                        ->whereNull('winners.deleted_at');
+                })
+                ->whereNotExists(function ($query) use ($drawSessionId) {
+                    $query->select(\DB::raw(1))
+                        ->from('temporary_winners')
+                        ->whereColumn('temporary_winners.participant_cif', 'customers.cif')
+                        ->where('temporary_winners.draw_session_id', $drawSessionId)
+                        ->whereNull('temporary_winners.deleted_at');
+                })
+                ->get();
 
             Log::info("BulkDraw - Found " . $tickets->count() . " eligible tickets.");
 
@@ -113,7 +116,8 @@ class ProcessBulkDrawJob implements ShouldQueue
                 throw new \Exception("No eligible winners found.");
             }
 
-            $results = [];
+            $wDataChunk = [];
+            $processedCount = 0;
             $usedCustomerIds = [];
 
             // Group tickets by region (normalized to UPPERCASE for weight matching)
@@ -140,7 +144,7 @@ class ProcessBulkDrawJob implements ShouldQueue
                 $usedCustomerIds[] = $selectedTicket->customer_id;
                 $luckyNumber = $this->generateLuckyNumber($selectedTicket);
 
-                $wData = [
+                $wDataChunk[] = [
                     'participant_id' => $selectedTicket->participant_id,
                     'participant_cif' => $selectedTicket->cif,
                     'participant_account_number' => $selectedTicket->account_number,
@@ -163,27 +167,31 @@ class ProcessBulkDrawJob implements ShouldQueue
                     'branch_company_book' => $selectedTicket->branch_company_book,
                     'branch_region' => $selectedTicket->region,
                     'account_status' => $selectedTicket->account_status,
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ];
 
-                // Save to temporary winners table
-                $tw = TemporaryWinner::create($wData);
+                $processedCount++;
 
-                // For the batch results JSON compat
-                $results[] = $tw->getData();
+                // Insert in batches of 250 to save memory and DB overhead
+                if (count($wDataChunk) >= 250) {
+                    TemporaryWinner::insert($wDataChunk);
+                    $wDataChunk = [];
+                    $batch->update(['processed_winners' => $processedCount]);
+                }
+            }
 
-                $batch->update([
-                    'processed_winners' => $i + 1,
-                    'results' => $results
-                ]);
+            // Insert remaining
+            if (count($wDataChunk) > 0) {
+                TemporaryWinner::insert($wDataChunk);
             }
 
             $finalStatus = $batch->status === 'CANCELLED' ? 'CANCELLED' : 'COMPLETED';
             $batch->update([
                 'status' => $finalStatus,
-                'processed_winners' => count($results),
-                'results' => $results,
+                'processed_winners' => $processedCount,
+                'results' => [], // Removed heavy results payload, not used by frontend
             ]);
-
         } catch (\Exception $e) {
             Log::error("BulkDraw Error: " . $e->getMessage());
             $batch->update([

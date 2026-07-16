@@ -62,9 +62,9 @@ class GenerateBankStatementJob implements ShouldQueue
                 // FILTER: Only same year as requested and exclude base comparison period
                 $query->where('year', $this->year)
                     ->where(function ($q) use ($baseComparisonYear, $baseComparisonMonth) {
-                    $q->where('year', '!=', (int) $baseComparisonYear)
-                        ->orWhere('month', '!=', (int) $baseComparisonMonth);
-                });
+                        $q->where('year', '!=', (int) $baseComparisonYear)
+                            ->orWhere('month', '!=', (int) $baseComparisonMonth);
+                    });
             },
             'accounts.documents'
         ])->find($this->customerId);
@@ -234,10 +234,10 @@ class GenerateBankStatementJob implements ShouldQueue
         $totalPointDescriptionsAggregate = "";
         foreach ($totalPointCustomers as $accountNumber => $tp) {
             $net = $tp['penambahan'] - $tp['pengurangan'];
-            
+
             // Simplified description logic: REK xxxxx {formatted_net} KUPON
             $totalPointDescriptionsAggregate .= "REK {$accountNumber} " . number_format($net, 0, ',', '.') . " KUPON<br>";
-            
+
             if ($net > 0) {
                 $totalPointsAggregate += $net;
             }
@@ -293,7 +293,7 @@ class GenerateBankStatementJob implements ShouldQueue
                 'status' => AccountDocument::STATUS_ACTIVE,
                 'document_type' => AccountDocument::TYPE_ESTATEMENT,
                 'has_stored_to_sftp' => false,
-                'metadata' => json_encode([
+                'metadata' => [
                     'month' => $this->month,
                     'year' => $this->year,
                     'account_number' => $account->account_number,
@@ -307,7 +307,7 @@ class GenerateBankStatementJob implements ShouldQueue
                     'showSuccessMessage' => true,
                     'monthName' => $this->monthName,
                     'current_date' => $this->currentDate
-                ])
+                ]
             ];
 
             AccountDocument::updateOrCreate(
@@ -441,12 +441,18 @@ class GenerateBankStatementJob implements ShouldQueue
         $newFilename = "{$bankStatementPath}/{$pattern}.{$nextSequence}.pdf";
 
         try {
-            $disk->put($newFilename, file_get_contents($fullPath), [
+            $success = $disk->put($newFilename, file_get_contents($fullPath), [
                 'visibility' => 'public',
                 'directory_visibility' => 'public'
             ]);
+
+            if (!$success) {
+                throw new \Exception("SFTP upload failed, disk put returned false.");
+            }
+
             return $newFilename;
         } catch (\Exception $e) {
+
             Log::error("Failed to upload bank statement: " . $e->getMessage());
             \App\Models\FailedUpload::create([
                 'filename' => basename($newFilename),

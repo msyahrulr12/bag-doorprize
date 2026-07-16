@@ -167,7 +167,23 @@ class CreateLotteryTickets implements ShouldQueue
 
         if (!empty($upserts)) {
             LotteryTicket::upsert($upserts, ['unique_key'], ['total_points', 'range_start', 'range_end', 'status', 'description', 'updated_at']);
+
+            // Sync to event_lottery_ticket pivot table
+            $syncedTickets = LotteryTicket::where('event_id', $eventId)
+                ->whereIn('unique_key', array_column($upserts, 'unique_key'))
+                ->select(['id', 'event_id'])
+                ->get();
+
+            $pivotData = $syncedTickets->map(fn($t) => [
+                'event_id' => $t->event_id,
+                'lottery_ticket_id' => $t->id,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ])->toArray();
+
+            DB::table('event_lottery_ticket')->insertOrIgnore($pivotData);
         }
+
 
         Log::info(sprintf(
             '✓ Tickets processed: %d new (range %d–%d), %d updated in-place',

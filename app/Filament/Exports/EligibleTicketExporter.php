@@ -4,6 +4,7 @@ namespace App\Filament\Exports;
 
 use App\Models\Participant;
 use App\Models\LotteryTicket;
+use App\Models\Event;
 use Filament\Actions\Exports\ExportColumn;
 use Filament\Actions\Exports\Exporter;
 use Filament\Actions\Exports\Models\Export;
@@ -15,33 +16,84 @@ class EligibleTicketExporter extends Exporter
 {
     protected static ?string $model = Participant::class;
 
+    protected static array $staticOptions = [];
+
+    public function __construct(Export $export, array $columnMap, array $options)
+    {
+        parent::__construct($export, $columnMap, $options);
+        self::$staticOptions = $options;
+    }
+
+    public function getCachedColumns(): array
+    {
+        self::$staticOptions = $this->options;
+        return parent::getCachedColumns();
+    }
+
+    public function __invoke(\Illuminate\Database\Eloquent\Model $record): array
+    {
+        self::$staticOptions = $this->options;
+        return parent::__invoke($record);
+    }
+
+    protected static function getEventId(): ?int
+    {
+        // Check route first (reliable in HTTP context, avoids stale static state under Octane)
+        $event = request()->route('record');
+        if ($event) {
+            return $event instanceof Event ? $event->id : (is_numeric($event) ? (int) $event : null);
+        }
+
+        // Fallback to static options (reliable in queue context, set by constructor)
+        if (isset(self::$staticOptions['event_id'])) {
+            return (int) self::$staticOptions['event_id'];
+        }
+
+        return null;
+    }
+
     public static function modifyQuery(Builder $query): Builder
     {
         \Illuminate\Support\Facades\DB::connection()->disableQueryLog();
 
-        // Detect if this query is executed during Filament's PrepareCsvExport job
-        // (which only collects IDs and doesn't need expensive subqueries/relationships).
-        $isPreparing = false;
-        foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 15) as $step) {
-            if (isset($step['class']) && $step['class'] === \Filament\Actions\Exports\Jobs\PrepareCsvExport::class) {
-                $isPreparing = true;
-                break;
-            }
-        }
-
-        if ($isPreparing) {
-            return $query->select(['participants.id'])
-                ->setEagerLoads([])
-                ->reorder('participants.id', 'desc');
-        }
-
-        return $query
-            ->with(['account.customer', 'account.branch', 'lotteryTickets'])
+        // Build a fresh, deterministic query matching EligibleTicketWidget exactly
+        $query = Participant::query()
+            ->with([
+                'account.customer',
+                'account.branch',
+                'lotteryTickets' => function ($query) {
+                    $query->where('status', LotteryTicket::STATUS_ACTIVE);
+                }
+            ])
+            ->whereHas('lotteryTickets', function ($query) {
+                $query->where('status', LotteryTicket::STATUS_ACTIVE);
+            })
             ->withSum([
                 'lotteryTickets as active_points' => function ($query) {
                     $query->where('status', LotteryTicket::STATUS_ACTIVE);
                 }
             ], 'total_points');
+
+        $eventId = self::getEventId();
+        if ($eventId) {
+            $event = Event::find($eventId);
+            if ($event) {
+                if ($event->status == Event::STATUS_COMPLETED) {
+                    $query->where(function ($q) use ($event) {
+                        $q->where('participants.event_id', $event->id)
+                            ->orWhereIn('participants.id', function ($subQuery) use ($event) {
+                                $subQuery->select('participant_id')
+                                    ->from('event_participant')
+                                    ->where('event_id', $event->id);
+                            });
+                    });
+                } else {
+                    $query->where('participants.event_id', $eventId);
+                }
+            }
+        }
+
+        return $query;
     }
 
     public static function getColumns(): array
@@ -95,16 +147,68 @@ class EligibleTicketExporter extends Exporter
 
         // Retrieve dynamic active months for lottery tickets
         $activeMonths = [];
-        try {
-            $activeMonths = LotteryTicket::query()
+        $eventId = self::getEventId();
+        $event = $eventId ? Event::find($eventId) : null;
+
+        if ($event) {
+            // Attempt to parse from event dates
+            if ($event->event_started_at && $event->event_ended_at) {
+                $start = Carbon::parse($event->event_started_at)->startOfMonth();
+                $end = Carbon::parse($event->event_ended_at)->startOfMonth();
+
+                while ($start->lessThanOrEqualTo($end)) {
+                    $activeMonths[] = (object) [
+                        'month' => (int) $start->format('m'),
+                        'year' => (int) $start->format('Y'),
+                    ];
+                    $start->addMonth();
+                }
+            }
+
+            // Fallback/merge with months that actually have active tickets for this event
+            $ticketMonths = LotteryTicket::query()
+                ->where('event_id', $event->id)
                 ->where('status', LotteryTicket::STATUS_ACTIVE)
                 ->select(['month', 'year'])
                 ->distinct()
-                ->orderBy('year')
-                ->orderBy('month')
                 ->get();
-        } catch (\Exception $e) {
-            // fallback
+
+            foreach ($ticketMonths as $tm) {
+                $exists = false;
+                foreach ($activeMonths as $m) {
+                    if ($m->month === $tm->month && $m->year === $tm->year) {
+                        $exists = true;
+                        break;
+                    }
+                }
+                if (!$exists) {
+                    $activeMonths[] = (object) [
+                        'month' => $tm->month,
+                        'year' => $tm->year,
+                    ];
+                }
+            }
+
+            // Sort chronologically
+            usort($activeMonths, function ($a, $b) {
+                if ($a->year === $b->year) {
+                    return $a->month <=> $b->month;
+                }
+                return $a->year <=> $b->year;
+            });
+        } else {
+            try {
+                $activeMonths = LotteryTicket::query()
+                    ->where('status', LotteryTicket::STATUS_ACTIVE)
+                    ->select(['month', 'year'])
+                    ->distinct()
+                    ->orderBy('year')
+                    ->orderBy('month')
+                    ->get();
+            } catch (\Exception $e) {
+                dd($e);
+                // fallback
+            }
         }
 
         foreach ($activeMonths as $am) {
@@ -133,9 +237,9 @@ class EligibleTicketExporter extends Exporter
                 $tickets = $record->lotteryTickets->where('status', LotteryTicket::STATUS_ACTIVE);
                 $ranges = [];
                 foreach ($tickets as $ticket) {
-                    if (empty($ticket->range_start) || empty($ticket->range_end)) {
-                        continue;
-                    }
+                    // if (empty($ticket->range_start) || empty($ticket->range_end)) {
+                    //     continue;
+                    // }
                     $ranges[] = $ticket->range_start === $ticket->range_end
                         ? $ticket->range_start
                         : "{$ticket->range_start} - {$ticket->range_end}";
