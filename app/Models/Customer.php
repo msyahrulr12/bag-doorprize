@@ -14,6 +14,8 @@ class Customer extends Model implements Auditable
         'branch_id',
         'name',
         'cif',
+        'nik',
+        'npwp',
         'email',
         'phone_number',
         'address',

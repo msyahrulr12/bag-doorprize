@@ -31,8 +31,7 @@ class ProcessPointHistory implements ShouldQueue
         private string $type, // 'ntb' or 'etb'
         private array $settings,
         private int $eventId
-    ) {
-    }
+    ) {}
 
     /**
      * Execute the job.
@@ -85,6 +84,8 @@ class ProcessPointHistory implements ShouldQueue
                 'branch_id'     => $branchId,
                 'name'          => $customer['name'],
                 'cif'           => $customer['cif'],
+                'nik'           => !empty($customer['nik_nasabah']) ? $customer['nik_nasabah'] : null,
+                'npwp'          => !empty($customer['npwp_nasabah']) ? $customer['npwp_nasabah'] : null,
                 'email'         => $customer['email'] ?? null,
                 'status'        => Customer::STATUS_ACTIVE,
                 'date_of_birth' => (isset($customer['date_of_birth']) && $customer['date_of_birth'] !== '') ? $customer['date_of_birth'] : null,
@@ -94,7 +95,7 @@ class ProcessPointHistory implements ShouldQueue
         }
 
         if (!empty($upserts)) {
-            Customer::upsert(array_values($upserts), ['cif'], ['name', 'email', 'branch_id', 'updated_at']);
+            Customer::upsert(array_values($upserts), ['cif'], ['name', 'email', 'branch_id', 'nik', 'npwp', 'updated_at']);
         }
     }
 
@@ -277,7 +278,6 @@ class ProcessPointHistory implements ShouldQueue
                 $phType   = PointHistory::POINT_TYPE_EARN;
                 $typeText = 'BERTAMBAH';
                 $points   = 0;
-
             } elseif ($isRestricted) {
                 // Account is inactive / excluded / confi — revoke all active tickets
                 $participant = $participants[$accId] ?? null;
@@ -293,20 +293,18 @@ class ProcessPointHistory implements ShouldQueue
                 $phType   = PointHistory::POINT_TYPE_RESET;
                 $typeText = 'RESET';
                 $status   = 'RESET';
-
             } elseif ($this->type === 'etb' && !$hasPrev && empty($openingDate)) {
                 // ETB with no previous data AND no opening date: truly unknown — skip tickets,
                 // but still write a zero-point EARN record for audit trail.
                 $phType   = PointHistory::POINT_TYPE_EARN;
                 $typeText = 'BERTAMBAH';
                 $points   = 0;
-
             } else {
                 $growth = $currAmt - $prevAmt;
 
                 if ($growth < 0) {
                     $threshold = (float) ($this->settings['threshold_reduction_balance'] ?? 100000);
-                    
+
                     if (abs($growth) > $threshold) {
                         // Negative growth exceeds threshold → expire/reset all accumulated points
                         $participant = $participants[$accId] ?? null;
@@ -377,7 +375,7 @@ class ProcessPointHistory implements ShouldQueue
                 // Remove created_at from the update payload so it doesn't overwrite the original creation time
                 $updateData = $anomaly;
                 unset($updateData['created_at']);
-                
+
                 DB::table('point_history_anomalies')->updateOrInsert(
                     [
                         'account_number' => $anomaly['account_number'],

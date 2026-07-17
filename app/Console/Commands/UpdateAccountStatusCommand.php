@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Account;
+use App\Models\Customer;
 use App\Models\Setting;
 use DB;
 use Illuminate\Console\Command;
@@ -71,9 +72,9 @@ class UpdateAccountStatusCommand extends Command
 
         $file = fopen($filePath, 'r');
         $header = fgetcsv($file);
-        
+
         // Normalize headers
-        $header = array_map(function($h) {
+        $header = array_map(function ($h) {
             return strtolower(trim($h));
         }, $header);
 
@@ -91,6 +92,7 @@ class UpdateAccountStatusCommand extends Command
 
             if (count($records) >= $batchSize) {
                 $this->updateBatch($records);
+                $this->processNikNpwp($records);
                 $records = [];
                 $this->info("Processed {$rowCount} rows...");
             }
@@ -98,6 +100,7 @@ class UpdateAccountStatusCommand extends Command
 
         if (!empty($records)) {
             $this->updateBatch($records);
+            $this->processNikNpwp($records);
         }
 
         fclose($file);
@@ -118,6 +121,7 @@ class UpdateAccountStatusCommand extends Command
             $accNo = $row['account_number'] ?? ($row['ac_id'] ?? ($row['account_no'] ?? null));
             if (!$accNo) continue;
 
+            // Flag Marker
             $inactivMarker = $row['inactiv_marker'] ?? ($row['inactivmarker'] ?? null);
             $excludeFlag = $row['exclude_flag'] ?? ($row['excludeflag'] ?? null);
             $confiFlag = $row['confi_flag'] ?? ($row['confiflag'] ?? null);
@@ -166,7 +170,7 @@ class UpdateAccountStatusCommand extends Command
                 Account::STATUS_ACTIVE => [],
             ];
 
-        foreach ($customers as $customer) {
+            foreach ($customers as $customer) {
                 $customerArr = (array) $customer;
                 $accNo = $customerArr['account_number'] ?? ($customerArr['ac_id'] ?? null);
                 if (!$accNo) continue;
@@ -198,9 +202,42 @@ class UpdateAccountStatusCommand extends Command
                     ]);
                 }
             }
+
+            // Sync NIK & NPWP from T24 data
+            $this->processNikNpwp($customers->map(fn($c) => (array) $c)->toArray());
         });
 
         $bar->finish();
         $this->newLine();
+    }
+
+    private function processNikNpwp(array $rows)
+    {
+        $now = now();
+
+        $data = array_filter(array_map(function ($row) use ($now) {
+            $cif = $row['cif'] ?? null;
+            if (empty($cif)) {
+                return null;
+            }
+
+            $nik = $row['nik_nasabah'] ?? ($row['nik'] ?? null);
+            $npwp = $row['npwp_nasabah'] ?? ($row['npwp'] ?? null);
+
+            return [
+                'cif' => $cif,
+                'nik' => !empty($nik) ? $nik : null,
+                'npwp' => !empty($npwp) ? $npwp : null,
+                'updated_at' => $now,
+            ];
+        }, $rows));
+
+        if (!empty($data)) {
+            Customer::upsert(
+                array_values($data),
+                ['cif'],
+                ['nik', 'npwp', 'updated_at']
+            );
+        }
     }
 }
